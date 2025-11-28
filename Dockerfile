@@ -1,4 +1,4 @@
-ARG XDG_CACHE_HOME="/cache"
+ARG XDG_CACHE_HOME
 
 FROM denoland/deno:debian AS builder
 
