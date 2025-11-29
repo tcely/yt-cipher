@@ -1,19 +1,17 @@
-FROM denoland/deno:latest AS builder
+FROM denoland/deno:debian AS builder
 
 WORKDIR /usr/src/app
 
-RUN apt-get update && apt-get install -y git npm
-
-RUN git clone https://github.com/yt-dlp/ejs.git
-# Pin to a specific commit
-RUN cd ejs && git checkout 2655b1f55f98e5870d4e124704a21f4d793b4e1c && cd ..
-
-COPY scripts/patch-ejs.ts ./scripts/patch-ejs.ts
-RUN deno run --allow-read --allow-write ./scripts/patch-ejs.ts
-
-RUN rm -rf ./ejs/.git ./ejs/node_modules || true
+RUN apt-get update && apt-get install -y git jq
 
 COPY . .
+
+RUN test '!' -e ejs || rm -v -rf ejs ; git clone https://github.com/yt-dlp/ejs.git ejs
+# Pin to a specific commit
+RUN cd ejs && \
+    git checkout 2655b1f55f98e5870d4e124704a21f4d793b4e1c && \
+    cd .. && \
+    deno add --npm $(jq -r '.dependencies|keys[]' ejs/package.json)
 
 RUN deno compile \
     --no-check \
@@ -25,7 +23,7 @@ RUN deno compile \
 RUN mkdir -p /usr/src/app/player_cache && \
     chown -R deno:deno /usr/src/app/player_cache
 
-FROM gcr.io/distroless/cc-debian12
+FROM gcr.io/distroless/cc-debian13
 
 WORKDIR /app
 
