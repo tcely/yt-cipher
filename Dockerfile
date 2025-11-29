@@ -15,7 +15,6 @@ RUN cd ejs && \
     jq -r "${jq_filter}" ejs/package.json | xargs -r -t deno add
 
 RUN deno compile \
-    --no-check \
     --output server \
     --allow-net --allow-read --allow-write --allow-env \
     --include worker.ts \
