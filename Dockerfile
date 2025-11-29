@@ -11,7 +11,8 @@ RUN test '!' -e ejs || rm -v -rf ejs ; git clone https://github.com/yt-dlp/ejs.g
 RUN cd ejs && \
     git checkout 2655b1f55f98e5870d4e124704a21f4d793b4e1c && \
     cd .. && \
-    deno add --npm $(jq -r '.dependencies|keys[]' ejs/package.json)
+    jq_filter='.dependencies|to_entries|map("npm:" + .key + "@" + .value)|.[]' && \
+    jq -r "${jq_filter}" ejs/package.json | xargs -r -t deno add
 
 RUN deno compile \
     --no-check \
