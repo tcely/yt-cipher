@@ -30,7 +30,8 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
         const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(playerUrl));
         cacheKey = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
-    const filePath = join(CACHE_DIR, `${cacheKey}.js`);
+    const safeKey = cacheKey.replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const filePath = join(CACHE_DIR, `${safeKey}.js`);
 
     try {
         const stat = await Deno.stat(filePath);
