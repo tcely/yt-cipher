@@ -48,10 +48,17 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
         const playerId = extractPlayerId(playerUrl);
         // If we can't reliably extract an id, fall back to hashing the full URL to avoid cache key collisions.
         if (playerId === "unknown") {
-            const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(playerUrl));
-            cacheKey = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+            const hashBuffer = await crypto.subtle.digest(
+                "SHA-256",
+                new TextEncoder().encode(playerUrl),
+            );
+            cacheKey = Array.from(new Uint8Array(hashBuffer))
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join("");
         } else {
-            cacheKey = playerId.replace(/[^a-zA-Z0-9_\-]/g, "_");
+            cacheKey = playerId
+                .replace(/[^a-zA-Z0-9_-]/g, "_")
+                .slice(0, 128);
         }
     } else {
         // This hash of the player script url will mean that diff region scripts are treated as unequals, even for the same version #
