@@ -97,7 +97,7 @@ export async function initializeCache() {
 
     // Since these accumulate over time just cleanout 14 day unused ones
     let fileCount = 0;
-    const thirtyDays = 14 * 24 * 60 * 60 * 1000;
+    const twoWeeks = 14 * 24 * 60 * 60 * 1000;
     console.log(`[${getTimestamp()}] Cleaning up player cache directory: ${CACHE_DIR}`);
     for await (const dirEntry of Deno.readDir(CACHE_DIR)) {
         if (dirEntry.isFile) {
@@ -105,7 +105,7 @@ export async function initializeCache() {
             const stat = await Deno.stat(filePath);
             const lastAccessed = stat.atime?.getTime() ??
                 stat.mtime?.getTime() ?? stat.birthtime?.getTime();
-            if (lastAccessed && (Date.now() - lastAccessed > thirtyDays)) {
+            if (lastAccessed && (Date.now() - lastAccessed > twoWeeks)) {
                 console.log(`[${getTimestamp()}] Deleting stale player cache file: ${filePath}`);
                 await Deno.remove(filePath);
             } else {
