@@ -4,6 +4,7 @@ import { join } from "@std/path";
 import { cacheSize, playerScriptFetches } from "./metrics.ts";
 import { digestPlayerUrl, extractPlayerId, getTimestamp } from "./utils.ts";
 
+const inFlightPlayerFetches = new Map<string, Promise<string>>();
 const ignorePlayerScriptRegion = ["1", "true", "yes", "on"].includes(
     (Deno.env.get("IGNORE_SCRIPT_REGION") ?? "").trim().toLowerCase(),
 );
@@ -71,7 +72,12 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
         await Deno.utime(filePath, new Date(), stat.mtime ?? new Date());
         return filePath;
     } catch (error) {
-        if (error instanceof Deno.errors.NotFound) {
+        if (!(error instanceof Deno.errors.NotFound)) throw error;
+
+        const existing = inFlightPlayerFetches.get(filePath);
+        if (existing) return await existing;
+
+        const fetchPromise = (async () => {
             console.log(`[${getTimestamp()}] Cache miss for player: ${playerUrl}. Fetching...`);
             const response = await fetch(playerUrl);
             playerScriptFetches.labels({
@@ -107,8 +113,15 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
 
             console.log(`[${getTimestamp()}] Saved player to cache: ${filePath}`);
             return filePath;
+        })();
+
+        inFlightPlayerFetches.set(filePath, fetchPromise);
+        try {
+            return await fetchPromise;
+        } finally {
+            // ensure map doesn’t leak entries on success/failure
+            inFlightPlayerFetches.delete(filePath);
         }
-        throw error;
     }
 }
 
