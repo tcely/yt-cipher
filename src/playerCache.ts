@@ -120,8 +120,9 @@ export async function initializeCache() {
     const twoWeeks = 14 * 24 * 60 * 60 * 1000;
     console.log(`[${getTimestamp()}] Cleaning up player cache directory: ${CACHE_DIR}`);
     for await (const dirEntry of Deno.readDir(CACHE_DIR)) {
-        if (dirEntry.isFile) {
-            const filePath = join(CACHE_DIR, dirEntry.name);
+        if (!dirEntry.isFile) continue;
+        const filePath = join(CACHE_DIR, dirEntry.name);
+        try {
             const stat = await Deno.stat(filePath);
             const lastAccessed = stat.atime?.getTime() ??
                 stat.mtime?.getTime() ?? stat.birthtime?.getTime();
@@ -131,6 +132,9 @@ export async function initializeCache() {
             } else {
                 fileCount++;
             }
+        } catch {
+            // File may have disappeared or be unreadable; don't fail startup.
+            continue;
         }
     }
     cacheSize.labels({ cache_name: "player" }).set(fileCount);
