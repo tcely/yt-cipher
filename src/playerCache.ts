@@ -9,15 +9,16 @@ const ignorePlayerScriptRegion = Deno.env.get("IGNORE_SCRIPT_REGION") === "true"
 function getCachePrefix(): string {
     // Windows
     if (Deno.build.os === "windows") {
+        const localAppData = Deno.env.get("LOCALAPPDATA");
         const TMP = Deno.env.get("TMP");
         const TEMP = Deno.env.get("TEMP");
-        const localAppData = Deno.env.get("LOCALAPPDATA");
-        if (TEMP) {
+
+        if (localAppData) {
+            return join(localAppData, "yt-cipher");
+        } else if (TEMP) {
             return join(TEMP, "yt-cipher");
         } else if (TMP) {
             return join(TMP, "yt-cipher");
-        } else if (localAppData) {
-            return join(localAppData, "yt-cipher");
         }
 
         throw new Error("Unable to determine cache directory");
