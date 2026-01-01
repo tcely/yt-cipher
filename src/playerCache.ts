@@ -132,8 +132,9 @@ export async function initializeCache() {
             } else {
                 fileCount++;
             }
-        } catch {
+        } catch (err) {
             // File may have disappeared or be unreadable; don't fail startup.
+            console.warn(`[${getTimestamp()}] Skipping cache entry during cleanup: ${filePath}`, err);
             continue;
         }
     }
