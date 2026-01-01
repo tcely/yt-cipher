@@ -75,7 +75,14 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
         if (!(error instanceof Deno.errors.NotFound)) throw error;
 
         const existing = inFlightPlayerFetches.get(filePath);
-        if (existing) return await existing;
+        if (existing) {
+            try {
+                return await existing;
+            } catch {
+                // Allow a retry if the shared fetch failed.
+                inFlightPlayerFetches.delete(filePath);
+            }
+        }
 
         const fetchPromise = (async () => {
             console.log(`[${getTimestamp()}] Cache miss for player: ${playerUrl}. Fetching...`);
