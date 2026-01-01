@@ -39,8 +39,7 @@ function getCachePrefix(): string {
     return Deno.cwd();
 }
 
-let cache_prefix = getCachePrefix();
-export const CACHE_DIR = join(cache_prefix, "player_cache");
+export const CACHE_DIR = join(getCachePrefix(), "player_cache");
 
 export async function getPlayerFilePath(playerUrl: string): Promise<string> {
     let cacheKey: string;
