@@ -79,7 +79,7 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
 
         const fetchPromise = (async () => {
             console.log(`[${getTimestamp()}] Cache miss for player: ${playerUrl}. Fetching...`);
-            const response = await fetch(playerUrl);
+            const response = await fetch(playerUrl, { signal: AbortSignal.timeout(60_000) });
             playerScriptFetches.labels({
                 player_url: playerUrl,
                 status: response.statusText,
