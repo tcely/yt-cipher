@@ -12,18 +12,17 @@ function getCachePrefix(): string {
     // Windows
     if (Deno.build.os === "windows") {
         const localAppData = Deno.env.get("LOCALAPPDATA");
-        const TMP = Deno.env.get("TMP");
+        const userProfile = Deno.env.get("USERPROFILE");
         const TEMP = Deno.env.get("TEMP");
+        const TMP = Deno.env.get("TMP");
 
-        if (localAppData) {
-            return join(localAppData, "yt-cipher");
-        } else if (TEMP) {
-            return join(TEMP, "yt-cipher");
-        } else if (TMP) {
-            return join(TMP, "yt-cipher");
-        }
+        if (localAppData) return join(localAppData, "yt-cipher");
+        if (userProfile) return join(userProfile, "AppData", "Local", "yt-cipher");
+        if (TEMP) return join(TEMP, "yt-cipher");
+        if (TMP) return join(TMP, "yt-cipher");
 
-        throw new Error("Unable to determine cache directory");
+        // Last-resort fallback to avoid hard crash.
+        return join(Deno.cwd(), "yt-cipher");
     }
 
     // XDG standard (Linux, optional on others)
