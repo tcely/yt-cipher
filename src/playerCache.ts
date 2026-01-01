@@ -45,7 +45,14 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
     let cacheKey: string;
     if (ignorePlayerScriptRegion) {
         // I have not seen any scripts that differ between regions so this should be safe
-        cacheKey = extractPlayerId(playerUrl);
+        const playerId = extractPlayerId(playerUrl);
+        // If we can't reliably extract an id, fall back to hashing the full URL to avoid cache key collisions.
+        if (!playerId || playerId === "unknown") {
+            const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(playerUrl));
+            cacheKey = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        } else {
+            cacheKey = playerId;
+        }
     } else {
         // This hash of the player script url will mean that diff region scripts are treated as unequals, even for the same version #
         // I dont think I have ever seen 2 scripts of the same version differ between regions but if they ever do this will catch it
