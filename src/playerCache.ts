@@ -4,7 +4,9 @@ import { join } from "@std/path";
 import { cacheSize, playerScriptFetches } from "./metrics.ts";
 import { digestPlayerUrl, extractPlayerId, getTimestamp } from "./utils.ts";
 
-const ignorePlayerScriptRegion = Deno.env.get("IGNORE_SCRIPT_REGION") === "true";
+const ignorePlayerScriptRegion = ["1", "true", "yes", "on"].includes(
+    (Deno.env.get("IGNORE_SCRIPT_REGION") ?? "").trim().toLowerCase(),
+);
 
 function getCachePrefix(): string {
     // Windows
