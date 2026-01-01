@@ -82,15 +82,17 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
             }
             const playerContent = await response.text();
             // use a temporary directory to allow atomic file updates
-            const tempDirPath = await Deno.makeTempDir({
-                dir: CACHE_DIR
-            });
+            const tempDirPath = await Deno.makeTempDir({ dir: CACHE_DIR });
             const tempFilePath = join(tempDirPath, "file.js");
-            await Deno.writeTextFile(tempFilePath, playerContent);
-            await Deno.rename(tempFilePath, filePath);
-            await Deno.remove(tempDirPath, {
-                recursive: true
-            });
+            try {
+                await Deno.writeTextFile(tempFilePath, playerContent);
+
+                // In case another request created the same cache entry first.
+                await Deno.remove(filePath).catch(() => {});
+                await Deno.rename(tempFilePath, filePath);
+            } finally {
+                await Deno.remove(tempDirPath, { recursive: true }).catch(() => {});
+            }
 
             // Update cache size for metrics
             let fileCount = 0;
