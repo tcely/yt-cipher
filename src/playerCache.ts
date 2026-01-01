@@ -89,8 +89,9 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
             try {
                 await Deno.writeTextFile(tempFilePath, playerContent);
 
-                // In case another request created the same cache entry first.
-                await Deno.remove(filePath).catch(() => {});
+                // Remove anything that might be there now.
+                await Deno.remove(filePath, { recursive: true }).catch(() => {});
+                // Now this rename either succeeds or fails.
                 await Deno.rename(tempFilePath, filePath);
             } finally {
                 await Deno.remove(tempDirPath, { recursive: true }).catch(() => {});
