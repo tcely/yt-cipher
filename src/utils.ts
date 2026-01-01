@@ -39,3 +39,7 @@ export function extractPlayerId(playerUrl: string): string {
     }
     return "unknown";
 }
+
+export function getTimestamp() {
+    return new Date().toISOString().slice(5, 19).replace("T", " ");
+}
