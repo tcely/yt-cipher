@@ -78,7 +78,12 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
         if (existing) {
             try {
                 return await existing;
-            } catch {
+            } catch (err) {
+                console.warn(
+                    `[${getTimestamp()}] Previous fetch failed for player: ${playerUrl} (${filePath}); retrying...`,
+                    err,
+                );
+
                 // Allow a retry if the shared fetch failed.
                 inFlightPlayerFetches.delete(filePath);
             }
