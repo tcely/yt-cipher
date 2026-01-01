@@ -2,7 +2,7 @@ import { crypto } from "@std/crypto";
 import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
 import { cacheSize, playerScriptFetches } from "./metrics.ts";
-import { extractPlayerId, getTimestamp } from "./utils.ts";
+import { digestPlayerUrl, extractPlayerId, getTimestamp } from "./utils.ts";
 
 const ignorePlayerScriptRegion = Deno.env.get("IGNORE_SCRIPT_REGION") === "true";
 
@@ -48,24 +48,19 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
         const playerId = extractPlayerId(playerUrl);
         // If we can't reliably extract an id, fall back to hashing the full URL to avoid cache key collisions.
         if (playerId === "unknown") {
-            const hashBuffer = await crypto.subtle.digest(
-                "SHA-256",
-                new TextEncoder().encode(playerUrl),
-            );
-            cacheKey = Array.from(new Uint8Array(hashBuffer))
-                .map((b) => b.toString(16).padStart(2, "0"))
-                .join("");
+            cacheKey = await digestPlayerUrl(playerUrl);
         } else {
-            cacheKey = playerId
-                .replace(/[^a-zA-Z0-9_-]/g, "_")
-                .slice(0, 128);
+            cacheKey = playerId.replace(/[^a-zA-Z0-9_-]/g, "_");
+            // Ensure that the file name is below the 128 character limit
+            if (cacheKey.length > 120) {
+                cacheKey = await digestPlayerUrl(playerUrl);
+            }
         }
     } else {
         // This hash of the player script url will mean that diff region scripts are treated as unequals, even for the same version #
         // I dont think I have ever seen 2 scripts of the same version differ between regions but if they ever do this will catch it
         // As far as player script access, I haven't ever heard about YT ratelimiting those either so ehh
-        const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(playerUrl));
-        cacheKey = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        cacheKey = await digestPlayerUrl(playerUrl);
     }
     const filePath = join(CACHE_DIR, `${cacheKey}.js`);
 
