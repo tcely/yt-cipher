@@ -90,6 +90,10 @@ export async function getPlayerFilePath(playerUrl: string): Promise<string> {
                 );
             }
             const playerContent = await response.text();
+
+            // Ensure cache dir still exists (it may be deleted between startup and a request).
+            await ensureDir(CACHE_DIR);
+
             // use a temporary directory to allow atomic file updates
             const tempDirPath = await Deno.makeTempDir({ dir: CACHE_DIR });
             const tempFilePath = join(tempDirPath, "file.js");
