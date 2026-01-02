@@ -36,7 +36,7 @@ function dispatch() {
                 task.reject(err);
             }
 
-            dispatch(); // keep checking
+            Promise.resolve().then(() => dispatch()); // keep checking
         };
 
         idleWorker.messagesLeft -= 1;
