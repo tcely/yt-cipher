@@ -85,7 +85,8 @@ function dispatch() {
                     task.reject(err);
                 }
             } finally {
-                scheduleRefillAndDispatch();
+                fillWorkers();
+                dispatch();
             }
         };
 
