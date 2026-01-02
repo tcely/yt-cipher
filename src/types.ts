@@ -36,10 +36,6 @@ export interface ResolveUrlResponse {
     resolved_url: string;
 }
 
-export interface WorkerWithStatus extends Worker {
-    isIdle?: boolean;
-}
-
 export interface Task {
     data: string;
     resolve: (output: string) => void;
