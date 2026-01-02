@@ -19,7 +19,7 @@ SHELL ["/busybox/busybox", "sh", "-c"]
 WORKDIR /app
 
 ARG TARGETARCH
-COPY --from=tini /verified/v0.19.0/tini-static-${TARGETARCH} /tini
+COPY --from=tini --chmod=00755 /verified/v0.19.0/tini-static-${TARGETARCH} /tini
 COPY --from=builder /usr/src/app/server /app/server
 
 COPY --from=builder --chown=nonroot:nonroot /usr/src/app/docs /app/docs
