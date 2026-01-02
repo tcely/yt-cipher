@@ -95,15 +95,11 @@ function dispatch() {
             idleWorker.addEventListener("message", messageHandler);
             idleWorker.postMessage(task.data);
         } catch (err) {
-            // Restore worker state and ensure task doesn't get stuck.
-            idleWorker.messagesLeft += 1;
-            clearInFlight(idleWorker);
-            task.reject(err);
-
             // Worker may be unusable; replace it to avoid pool deadlocks.
-            retireWorker(idleWorker);
+            idleWorker.messagesLeft = 0;
+            releaseWorker(idleWorker);
 
-            scheduleRefillAndDispatch();
+            task.reject(err);
         }
     }
 }
