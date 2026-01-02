@@ -85,19 +85,25 @@ function dispatch() {
             const { type, data } = (e.data ?? {}) as { type?: string; data?: any };
 
             if (type === "success") {
-                releaseWorker(idleWorker);
-                task.resolve(data);
+                try {
+                    task.resolve(data);
+                } finally {
+                    releaseWorker(idleWorker);
+                }
                 return;
             }
 
             console.error("Received error from worker:", data);
             const err = new Error(data?.message ?? "Worker error");
             err.stack = data?.stack;
-            task.reject(err);
 
             // Treat worker-reported errors as potentially unhealthy.
             idleWorker.messagesRemaining = 0;
-            releaseWorker(idleWorker);
+            try {
+                task.reject(err);
+            } finally {
+                releaseWorker(idleWorker);
+            }
         };
 
         try {
