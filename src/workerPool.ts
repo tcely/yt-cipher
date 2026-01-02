@@ -31,8 +31,7 @@ function dispatch() {
         const task = taskQueue.shift()!;
 
         const messageHandler = (e: MessageEvent) => {
-            idleWorker.removeEventListener("message", messageHandler);
-            inFlightTask.delete(idleWorker);
+            clearInFlight(idleWorker);
             if (idleWorker.messagesLeft > 0) {
                 idleWorkerStack.push(idleWorker);
             } else {
@@ -62,14 +61,13 @@ function dispatch() {
 
         try {
             idleWorker.messagesLeft -= 1;
-            inFlightTask.set(idleWorker, task);
+            setInFlight(idleWorker, task, messageHandler);
             idleWorker.addEventListener("message", messageHandler);
             idleWorker.postMessage(task.data);
         } catch (err) {
             // Restore worker state and ensure task doesn't get stuck.
             idleWorker.messagesLeft += 1;
-            idleWorker.removeEventListener("message", messageHandler);
-            inFlightTask.delete(idleWorker);
+            clearInFlight(idleWorker);
             task.reject(err);
 
             // Worker may be unusable; replace it to avoid pool deadlocks.
@@ -103,11 +101,11 @@ function fillWorkers(messagesLimit: number = 10_000) {
         worker.messagesLeft = messagesLimit;
         worker.addEventListener("error", (e: ErrorEvent) => {
             console.error("Worker crashed:", e.message);
-            const task = inFlightTask.get(worker);
-            if (task) {
+            const inFlight = clearInFlight(worker);
+            if (inFlight) {
                 inFlightTask.delete(worker);
                 // reject the task that was assigned to this worker
-                task.reject(new Error(`Worker crashed: ${e.message}`));
+                inFlight.task.reject(new Error(`Worker crashed: ${e.message}`));
             }
 
             // remove crashed worker from tracking structures
