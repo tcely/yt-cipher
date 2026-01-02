@@ -76,7 +76,7 @@ function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
 }
 
 function dispatch() {
-    if (!(workers.length > 0)) fillWorkers(MESSAGES_LIMIT);
+    if (workers.length < CONCURRENCY) fillWorkers(MESSAGES_LIMIT);
     while (idleWorkerStack.length > 0 && taskQueue.length > 0) {
         const idleWorker = idleWorkerStack.pop()!;
         const task = taskQueue.shift()!;
