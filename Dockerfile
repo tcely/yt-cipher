@@ -12,12 +12,14 @@ RUN deno compile \
     --include worker.ts \
     server.ts
 
+FROM ghcr.io/tcely/docker-tini:main@sha256:fd1e1b3b560eadea81a9f91f8d38c7724b247d7c4bae0fd698aadb13e01f5e50 AS tini
 FROM gcr.io/distroless/cc-debian13:debug
 SHELL ["/busybox/busybox", "sh", "-c"]
 
 WORKDIR /app
 
-COPY --from=builder /tini /tini
+ARG TARGETARCH
+COPY --from=tini /verified/v0.19.0/tini-static-${TARGETARCH} /tini
 COPY --from=builder /usr/src/app/server /app/server
 
 COPY --from=builder --chown=nonroot:nonroot /usr/src/app/docs /app/docs
