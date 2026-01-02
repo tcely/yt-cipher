@@ -147,6 +147,17 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
             scheduleRefillAndDispatch(messagesLimit);
         });
 
+        worker.addEventListener("messageerror", () => {
+            console.error("Worker message deserialization failed");
+            const inFlight = clearInFlight(worker);
+            if (inFlight) {
+                inFlight.task.reject(new Error("Worker message deserialization failed"));
+            }
+
+            retireWorker(worker);
+            scheduleRefillAndDispatch(messagesLimit);
+        });
+
         workers.push(worker);
         idleWorkerStack.push(worker);
     }
