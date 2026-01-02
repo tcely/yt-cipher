@@ -21,8 +21,8 @@ function dispatch() {
                 // stop the finished worker
                 idleWorker.terminate();
                 // remove from workers
-                const index = workers.indexOf(idleWorker);
-                if (index >= 0) workers.splice(index, 1);
+                const queueIdx = workers.indexOf(idleWorker);
+                if (queueIdx >= 0) workers.splice(queueIdx, 1);
                 // replace any missing workers
                 fillWorkers();
             }
