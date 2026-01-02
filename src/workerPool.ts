@@ -1,20 +1,18 @@
-import type { WorkerWithStatus, Task } from "./types.ts";
+import type { Task } from "./types.ts";
 
 const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator.hardwareConcurrency || 1;
 
-const workers: WorkerWithStatus[] = [];
-const idleWorkerStack: WorkerWithStatus[] = [];
+const workers: Worker[] = [];
+const idleWorkerStack: Worker[] = [];
 const taskQueue: Task[] = [];
 
 function dispatch() {
     while(idleWorkerStack.length > 0 && taskQueue.length > 0) {
         const task = taskQueue.shift()!;
         const idleWorker = idleWorkerStack.pop()!;
-        idleWorker.isIdle = false;
 
         const messageHandler = (e: MessageEvent) => {
             idleWorker.removeEventListener("message", messageHandler);
-            idleWorker.isIdle = true;
             idleWorkerStack.push(idleWorker);
 
             const { type, data } = e.data;
@@ -44,8 +42,7 @@ export function execInPool(data: string): Promise<string> {
 
 export function initializeWorkers() {
     for (let i = 0; i < CONCURRENCY; i++) {
-        const worker: WorkerWithStatus = new Worker(new URL("../worker.ts", import.meta.url).href, { type: "module" });
-        worker.isIdle = true;
+        const worker: Worker = new Worker(new URL("../worker.ts", import.meta.url).href, { type: "module" });
         workers.push(worker);
         idleWorkerStack.push(worker);
     }
