@@ -76,7 +76,7 @@ function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
 }
 
 function dispatch() {
-    if (!(workers.length > 0)) fillWorkers();
+    if (!(workers.length > 0)) fillWorkers(MESSAGES_LIMIT);
     while (idleWorkerStack.length > 0 && taskQueue.length > 0) {
         const idleWorker = idleWorkerStack.pop()!;
         const task = taskQueue.shift()!;
@@ -122,7 +122,7 @@ export function execInPool(data: string): Promise<string> {
     });
 }
 
-function fillWorkers(messagesLimit: number = 10_000) {
+function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
     while (workers.length < CONCURRENCY) {
         const worker: WorkerWithLimit = new Worker(new URL("../worker.ts", import.meta.url).href, { type: "module" });
         worker.messagesRemaining = messagesLimit;
@@ -136,7 +136,7 @@ function fillWorkers(messagesLimit: number = 10_000) {
 
             // remove crashed worker
             retireWorker(worker);
-            
+
             // replace any missing workers + ensure queued tasks continue processing
             scheduleRefillAndDispatch(messagesLimit);
         });
