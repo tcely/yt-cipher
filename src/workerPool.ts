@@ -43,10 +43,33 @@ function dispatch() {
             }
         };
 
-        idleWorker.messagesLeft -= 1;
-        inFlightTask.set(idleWorker, task);
-        idleWorker.addEventListener("message", messageHandler);
-        idleWorker.postMessage(task.data);
+        try {
+            idleWorker.messagesLeft -= 1;
+            inFlightTask.set(idleWorker, task);
+            idleWorker.addEventListener("message", messageHandler);
+            idleWorker.postMessage(task.data);
+        } catch (err) {
+            // Restore worker state and ensure task doesn't get stuck.
+            idleWorker.messagesLeft += 1;
+            idleWorker.removeEventListener("message", messageHandler);
+            inFlightTask.delete(idleWorker);
+            task.reject(err);
+
+            // Worker may be unusable; replace it to avoid pool deadlocks.
+            try {
+                idleWorker.terminate();
+            } catch {
+                /* ignore */
+            }
+
+            const queueIdx = workers.indexOf(idleWorker);
+            if (queueIdx >= 0) workers.splice(queueIdx, 1);
+
+            Promise.resolve().then(() => {
+                fillWorkers();
+                dispatch();
+            });
+        }
     }
 }
 
