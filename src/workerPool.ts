@@ -42,8 +42,9 @@ function releaseWorker(
     worker: WorkerWithLimit,
     messagesLimit: number = MESSAGES_LIMIT,
 ) {
-    // Ensure we don't leak message handlers or keep stale in-flight state
-    clearInFlight(worker);
+    // Only release once: if nothing is in-flight, don't re-add/retire twice.
+    const inFlight = clearInFlight(worker);
+    if (!inFlight) return;
 
     if (worker.messagesRemaining > 0) {
         // Worker can take more work
