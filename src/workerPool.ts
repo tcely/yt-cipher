@@ -7,6 +7,29 @@ const idleWorkerStack: WorkerWithLimit[] = [];
 const taskQueue: Task[] = [];
 const inFlightTask = new WeakMap<WorkerWithLimit, InFlight>();
 
+function removeWorkerFromTracking(worker: WorkerWithLimit) {
+    const queueIdx = workers.indexOf(worker);
+    if (queueIdx >= 0) workers.splice(queueIdx, 1);
+    const stackIdx = idleWorkerStack.indexOf(worker);
+    if (stackIdx >= 0) idleWorkerStack.splice(stackIdx, 1);
+}
+
+function retireWorker(worker: WorkerWithLimit) {
+    removeWorkerFromTracking(worker);
+    try {
+        worker.terminate();
+    } catch {
+        // ignore termination errors
+    }
+}
+
+function scheduleRefillAndDispatch(messagesLimit: number) {
+    queueMicrotask(() => {
+        fillWorkers(messagesLimit);
+        dispatch();
+    });
+}
+
 function setInFlight(
     worker: WorkerWithLimit,
     task: Task,
@@ -35,13 +58,7 @@ function dispatch() {
             if (idleWorker.messagesLeft > 0) {
                 idleWorkerStack.push(idleWorker);
             } else {
-                // stop the finished worker
-                idleWorker.terminate();
-                // remove from workers
-                const queueIdx = workers.indexOf(idleWorker);
-                if (queueIdx >= 0) workers.splice(queueIdx, 1);
-                // replace any missing workers
-                fillWorkers();
+                retireWorker(idleWorker);
             }
 
             try {
@@ -55,7 +72,7 @@ function dispatch() {
                     task.reject(err);
                 }
             } finally {
-                Promise.resolve().then(() => dispatch()); // keep checking
+                scheduleRefillAndDispatch();
             }
         };
 
@@ -71,19 +88,9 @@ function dispatch() {
             task.reject(err);
 
             // Worker may be unusable; replace it to avoid pool deadlocks.
-            try {
-                idleWorker.terminate();
-            } catch {
-                /* ignore */
-            }
+            retireWorker(idleWorker);
 
-            const queueIdx = workers.indexOf(idleWorker);
-            if (queueIdx >= 0) workers.splice(queueIdx, 1);
-
-            Promise.resolve().then(() => {
-                fillWorkers();
-                dispatch();
-            });
+            scheduleRefillAndDispatch();
         }
     }
 }
@@ -103,29 +110,15 @@ function fillWorkers(messagesLimit: number = 10_000) {
             console.error("Worker crashed:", e.message);
             const inFlight = clearInFlight(worker);
             if (inFlight) {
-                inFlightTask.delete(worker);
                 // reject the task that was assigned to this worker
                 inFlight.task.reject(new Error(`Worker crashed: ${e.message}`));
             }
 
-            // remove crashed worker from tracking structures
-            const queueIdx = workers.indexOf(worker);
-            if (queueIdx >= 0) workers.splice(queueIdx, 1);
-
-            const stackIdx = idleWorkerStack.indexOf(worker);
-            if (stackIdx >= 0) idleWorkerStack.splice(stackIdx, 1);
-
-            try {
-                worker.terminate();
-            } catch {
-                // ignore termination errors
-            }
+            // remove crashed worker
+            retireWorker(worker);
             
             // replace any missing workers + ensure queued tasks continue processing
-            queueMicrotask(() => {
-                fillWorkers(messagesLimit);
-                dispatch();
-            });
+            scheduleRefillAndDispatch(messagesLimit);
         });
 
         workers.push(worker);
