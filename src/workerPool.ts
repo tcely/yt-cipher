@@ -7,7 +7,8 @@ const idleWorkerStack: Worker[] = [];
 const taskQueue: Task[] = [];
 
 function dispatch() {
-    while(idleWorkerStack.length > 0 && taskQueue.length > 0) {
+    if (!(workers.length > 0)) fillWorkers();
+    while (idleWorkerStack.length > 0 && taskQueue.length > 0) {
         const task = taskQueue.shift()!;
         const idleWorker = idleWorkerStack.pop()!;
 
@@ -40,11 +41,16 @@ export function execInPool(data: string): Promise<string> {
     });
 }
 
-export function initializeWorkers() {
-    for (let i = 0; i < CONCURRENCY; i++) {
+function fillWorkers() {
+    while (workers.length < CONCURRENCY) {
         const worker: Worker = new Worker(new URL("../worker.ts", import.meta.url).href, { type: "module" });
         workers.push(worker);
         idleWorkerStack.push(worker);
     }
+}
+
+export function initializeWorkers() {
+    fillWorkers();
     console.log(`Initialized ${CONCURRENCY} workers`);
 }
+
