@@ -86,7 +86,12 @@ function dispatch() {
 
             if (type === "success") {
                 try {
-                    task.resolve(data);
+                    if (typeof data !== "string") {
+                        idleWorker.messagesRemaining = 0;
+                        task.reject(new Error("Worker returned non-string success payload"));
+                    } else {
+                        task.resolve(data);
+                    }
                 } finally {
                     releaseWorker(idleWorker);
                 }
