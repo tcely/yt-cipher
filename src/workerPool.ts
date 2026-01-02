@@ -5,6 +5,7 @@ const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator
 const workers: WorkerWithLimit[] = [];
 const idleWorkerStack: WorkerWithLimit[] = [];
 const taskQueue: Task[] = [];
+const inFlightTask = new WeakMap<WorkerWithLimit, Task>();
 
 function dispatch() {
     if (!(workers.length > 0)) fillWorkers();
@@ -58,10 +59,16 @@ function fillWorkers(messagesLimit: number = 10_000) {
         worker.messagesLeft = messagesLimit;
         worker.addEventListener("error", (e: ErrorEvent) => {
             console.error("Worker crashed:", e.message);
+            const task = inFlightTask.get(worker);
+            if (task) {
+                inFlightTask.delete(worker);
+                // reject the task that was assigned to this worker
+                task.reject(new Error(`Worker crashed: ${e.message}`));
+            }
 
             // remove crashed worker from tracking structures
-            const idx = workers.indexOf(worker);
-            if (idx >= 0) workers.splice(idx, 1);
+            const queueIdx = workers.indexOf(worker);
+            if (queueIdx >= 0) workers.splice(queueIdx, 1);
 
             const stackIdx = idleWorkerStack.indexOf(worker);
             if (stackIdx >= 0) idleWorkerStack.splice(stackIdx, 1);
