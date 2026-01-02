@@ -46,6 +46,8 @@ export interface Task {
     reject: (error: any) => void;
 }
 
+export type InFlight = { task: Task; messageHandler: (e: MessageEvent) => void };
+
 export type ApiRequest = SignatureRequest | StsRequest | ResolveUrlRequest;
 
 // Parsing into this context helps avoid multi copies of requests

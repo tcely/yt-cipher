@@ -1,11 +1,28 @@
-import type { WorkerWithLimit, Task } from "./types.ts";
+import type { InFlight, Task, WorkerWithLimit } from "./types.ts";
 
 const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator.hardwareConcurrency || 1;
 
 const workers: WorkerWithLimit[] = [];
 const idleWorkerStack: WorkerWithLimit[] = [];
 const taskQueue: Task[] = [];
-const inFlightTask = new WeakMap<WorkerWithLimit, Task>();
+const inFlightTask = new WeakMap<WorkerWithLimit, InFlight>();
+
+function setInFlight(
+    worker: WorkerWithLimit,
+    task: Task,
+    messageHandler: (e: MessageEvent) => void,
+) {
+    inFlightTask.set(worker, { task, messageHandler });
+}
+
+function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
+    const inFlight = inFlightTask.get(worker);
+    if (inFlight) {
+        worker.removeEventListener("message", inFlight.messageHandler);
+        inFlightTask.delete(worker);
+    }
+    return inFlight;
+}
 
 function dispatch() {
     if (!(workers.length > 0)) fillWorkers();
