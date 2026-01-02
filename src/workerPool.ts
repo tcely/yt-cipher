@@ -2,6 +2,11 @@ import type { InFlight, Task, WorkerWithLimit } from "./types.ts";
 
 const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator.hardwareConcurrency || 1;
 
+// Keep the per-worker message budget consistent across the module.
+// (Optional env override for testing/tuning.)
+const MESSAGES_LIMIT =
+    parseInt(Deno.env.get("MESSAGES_LIMIT") || "", 10) || 10_000;
+
 const workers: WorkerWithLimit[] = [];
 const idleWorkerStack: WorkerWithLimit[] = [];
 const taskQueue: Task[] = [];
@@ -15,6 +20,9 @@ function removeWorkerFromTracking(worker: WorkerWithLimit) {
 }
 
 function retireWorker(worker: WorkerWithLimit) {
+    // Defensive: ensure we don't leak message handlers or keep stale in-flight state
+    clearInFlight(worker);
+
     removeWorkerFromTracking(worker);
     try {
         worker.terminate();
@@ -23,7 +31,7 @@ function retireWorker(worker: WorkerWithLimit) {
     }
 }
 
-function scheduleRefillAndDispatch(messagesLimit: number) {
+function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
     queueMicrotask(() => {
         fillWorkers(messagesLimit);
         dispatch();
@@ -32,7 +40,7 @@ function scheduleRefillAndDispatch(messagesLimit: number) {
 
 function releaseWorker(
     worker: WorkerWithLimit,
-    messagesLimit: number = 10_000,
+    messagesLimit: number = MESSAGES_LIMIT,
 ) {
     // Ensure we don't leak message handlers or keep stale in-flight state
     clearInFlight(worker);
