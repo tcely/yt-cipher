@@ -36,6 +36,10 @@ export interface ResolveUrlResponse {
     resolved_url: string;
 }
 
+export interface WorkerWithLimit extends Worker {
+    messagesLeft?: number;
+}
+
 export interface Task {
     data: string;
     resolve: (output: string) => void;
