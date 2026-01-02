@@ -56,6 +56,26 @@ function fillWorkers(messagesLimit: number = 10_000) {
     while (workers.length < CONCURRENCY) {
         const worker: WorkerWithLimit = new Worker(new URL("../worker.ts", import.meta.url).href, { type: "module" });
         worker.messagesLeft = messagesLimit;
+        worker.addEventListener("error", (e: ErrorEvent) => {
+            console.error("Worker crashed:", e.message);
+
+            // remove crashed worker from tracking structures
+            const idx = workers.indexOf(worker);
+            if (idx >= 0) workers.splice(idx, 1);
+
+            const stackIdx = idleWorkerStack.indexOf(worker);
+            if (stackIdx >= 0) idleWorkerStack.splice(stackIdx, 1);
+
+            try {
+                worker.terminate();
+            } catch {
+                // ignore termination errors
+            }
+
+            // replace any missing workers
+            fillWorkers(messagesLimit);
+        });
+
         workers.push(worker);
         idleWorkerStack.push(worker);
     }
