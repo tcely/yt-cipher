@@ -81,18 +81,22 @@ function dispatch() {
         const task = taskQueue.shift()!;
 
         const messageHandler = (e: MessageEvent) => {
-            // releaseWorker() is responsible for clearing in-flight state, returning/retiring
-            // the worker, and scheduling refill + further dispatch.
-            releaseWorker(idleWorker);
             const { type, data } = (e.data ?? {}) as { type?: string; data?: any };
+
             if (type === "success") {
+                releaseWorker(idleWorker);
                 task.resolve(data);
-            } else {
-                console.error("Received error from worker:", data);
-                const err = new Error(data?.message ?? "Worker error");
-                err.stack = data?.stack;
-                task.reject(err);
+                return;
             }
+
+            console.error("Received error from worker:", data);
+            const err = new Error(data?.message ?? "Worker error");
+            err.stack = data?.stack;
+            task.reject(err);
+
+            // Treat worker-reported errors as potentially unhealthy.
+            idleWorker.messagesRemaining = 0;
+            releaseWorker(idleWorker);
         };
 
         try {
