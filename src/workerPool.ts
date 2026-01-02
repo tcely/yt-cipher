@@ -15,6 +15,7 @@ function dispatch() {
 
         const messageHandler = (e: MessageEvent) => {
             idleWorker.removeEventListener("message", messageHandler);
+            inFlightTask.delete(idleWorker);
             if (idleWorker.messagesLeft > 0) {
                 idleWorkerStack.push(idleWorker);
             } else {
@@ -43,6 +44,7 @@ function dispatch() {
         };
 
         idleWorker.messagesLeft -= 1;
+        inFlightTask.set(idleWorker, task);
         idleWorker.addEventListener("message", messageHandler);
         idleWorker.postMessage(task.data);
     }
