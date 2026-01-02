@@ -10,22 +10,21 @@ function dispatch() {
     if (!(workers.length > 0)) fillWorkers();
     while (idleWorkerStack.length > 0 && taskQueue.length > 0) {
         const idleWorker = idleWorkerStack.pop()!;
-        if (idleWorker.messagesLeft <= 0) {
-            // stop while idle
-            idleWorker.terminate();
-            // remove from workers
-            const index = workers.indexOf(idleWorker);
-            if (index >= 0) workers.splice(index, 1);
-            // replace any missing workers
-            fillWorkers();
-            // choose another idle worker the next time around
-            continue;
-        }
         const task = taskQueue.shift()!;
 
         const messageHandler = (e: MessageEvent) => {
             idleWorker.removeEventListener("message", messageHandler);
-            idleWorkerStack.push(idleWorker);
+            if (idleWorker.messagesLeft > 0) {
+                idleWorkerStack.push(idleWorker);
+            } else {
+                // stop the finished worker
+                idleWorker.terminate();
+                // remove from workers
+                const index = workers.indexOf(idleWorker);
+                if (index >= 0) workers.splice(index, 1);
+                // replace any missing workers
+                fillWorkers();
+            }
 
             const { type, data } = e.data;
             if (type === 'success') {
