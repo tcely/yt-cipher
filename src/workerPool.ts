@@ -40,7 +40,6 @@ function dispatch() {
             } finally {
                 Promise.resolve().then(() => dispatch()); // keep checking
             }
-            Promise.resolve().then(() => dispatch()); // keep checking
         };
 
         idleWorker.messagesLeft -= 1;
