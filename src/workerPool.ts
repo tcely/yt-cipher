@@ -105,12 +105,12 @@ function fillWorkers(messagesLimit: number = 10_000) {
             } catch {
                 // ignore termination errors
             }
-
-            // replace any missing workers
-            fillWorkers(messagesLimit);
-
-            // ensure queued tasks continue processing
-            Promise.resolve().then(() => dispatch());
+            
+            // replace any missing workers + ensure queued tasks continue processing
+            queueMicrotask(() => {
+                fillWorkers(messagesLimit);
+                dispatch();
+            });
         });
 
         workers.push(worker);
