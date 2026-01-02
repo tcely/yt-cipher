@@ -83,6 +83,9 @@ function fillWorkers(messagesLimit: number = 10_000) {
 
             // replace any missing workers
             fillWorkers(messagesLimit);
+
+            // ensure queued tasks continue processing
+            Promise.resolve().then(() => dispatch());
         });
 
         workers.push(worker);
