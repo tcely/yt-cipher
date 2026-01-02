@@ -1,16 +1,27 @@
-import type { Task } from "./types.ts";
+import type { WorkerWithLimit, Task } from "./types.ts";
 
 const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator.hardwareConcurrency || 1;
 
-const workers: Worker[] = [];
-const idleWorkerStack: Worker[] = [];
+const workers: WorkerWithLimit[] = [];
+const idleWorkerStack: WorkerWithLimit[] = [];
 const taskQueue: Task[] = [];
 
 function dispatch() {
     if (!(workers.length > 0)) fillWorkers();
     while (idleWorkerStack.length > 0 && taskQueue.length > 0) {
-        const task = taskQueue.shift()!;
         const idleWorker = idleWorkerStack.pop()!;
+        if (idleWorker.messagesLeft <= 0) {
+            // stop while idle
+            idleWorker.terminate();
+            // remove from workers
+            const index = workers.indexOf(idleWorker);
+            if (index >= 0) workers.splice(index, 1);
+            // replace any missing workers
+            fillWorkers();
+            // choose another idle worker the next time around
+            continue;
+        }
+        const task = taskQueue.shift()!;
 
         const messageHandler = (e: MessageEvent) => {
             idleWorker.removeEventListener("message", messageHandler);
@@ -29,6 +40,7 @@ function dispatch() {
             dispatch(); // keep checking
         };
 
+        idleWorker.messagesLeft -= 1;
         idleWorker.addEventListener("message", messageHandler);
         idleWorker.postMessage(task.data);
     }
@@ -41,9 +53,10 @@ export function execInPool(data: string): Promise<string> {
     });
 }
 
-function fillWorkers() {
+function fillWorkers(messagesLimit: number = 10_000) {
     while (workers.length < CONCURRENCY) {
-        const worker: Worker = new Worker(new URL("../worker.ts", import.meta.url).href, { type: "module" });
+        const worker: WorkerWithLimit = new Worker(new URL("../worker.ts", import.meta.url).href, { type: "module" });
+        worker.messagesLeft = messagesLimit;
         workers.push(worker);
         idleWorkerStack.push(worker);
     }
