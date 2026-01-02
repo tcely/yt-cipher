@@ -30,6 +30,25 @@ function scheduleRefillAndDispatch(messagesLimit: number) {
     });
 }
 
+function releaseWorker(
+    worker: WorkerWithLimit,
+    messagesLimit: number = 10_000,
+) {
+    // Ensure we don't leak message handlers or keep stale in-flight state
+    clearInFlight(worker);
+
+    if (worker.messagesLeft > 0) {
+        // Worker can take more work
+        idleWorkerStack.push(worker);
+    } else {
+        // Worker hit its limit; remove & replace
+        retireWorker(worker);
+    }
+
+    // Keep the pool healthy and keep draining the queue
+    scheduleRefillAndDispatch(messagesLimit);
+}
+
 function setInFlight(
     worker: WorkerWithLimit,
     task: Task,
@@ -54,13 +73,7 @@ function dispatch() {
         const task = taskQueue.shift()!;
 
         const messageHandler = (e: MessageEvent) => {
-            clearInFlight(idleWorker);
-            if (idleWorker.messagesLeft > 0) {
-                idleWorkerStack.push(idleWorker);
-            } else {
-                retireWorker(idleWorker);
-            }
-
+            releaseWorker(idleWorker);
             try {
                 const { type, data } = (e.data ?? {}) as { type?: string; data?: any };
                 if (type === "success") {
