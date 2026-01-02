@@ -31,8 +31,13 @@ function retireWorker(worker: WorkerWithLimit) {
     }
 }
 
+let refillScheduled = false;
+
 function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
+    if (refillScheduled) return;
+    refillScheduled = true;
     queueMicrotask(() => {
+        refillScheduled = false;
         fillWorkers(messagesLimit);
         dispatch();
     });
