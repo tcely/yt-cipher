@@ -45,7 +45,7 @@ function releaseWorker(
     // Ensure we don't leak message handlers or keep stale in-flight state
     clearInFlight(worker);
 
-    if (worker.messagesLeft > 0) {
+    if (worker.messagesRemaining > 0) {
         // Worker can take more work
         idleWorkerStack.push(worker);
     } else {
@@ -99,13 +99,13 @@ function dispatch() {
         };
 
         try {
-            idleWorker.messagesLeft -= 1;
+            idleWorker.messagesRemaining -= 1;
             setInFlight(idleWorker, task, messageHandler);
             idleWorker.addEventListener("message", messageHandler);
             idleWorker.postMessage(task.data);
         } catch (err) {
             // Worker may be unusable; replace it to avoid pool deadlocks.
-            idleWorker.messagesLeft = 0;
+            idleWorker.messagesRemaining = 0;
             releaseWorker(idleWorker);
 
             task.reject(err);
@@ -123,7 +123,7 @@ export function execInPool(data: string): Promise<string> {
 function fillWorkers(messagesLimit: number = 10_000) {
     while (workers.length < CONCURRENCY) {
         const worker: WorkerWithLimit = new Worker(new URL("../worker.ts", import.meta.url).href, { type: "module" });
-        worker.messagesLeft = messagesLimit;
+        worker.messagesRemaining = messagesLimit;
         worker.addEventListener("error", (e: ErrorEvent) => {
             console.error("Worker crashed:", e.message);
             const inFlight = clearInFlight(worker);

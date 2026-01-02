@@ -37,7 +37,7 @@ export interface ResolveUrlResponse {
 }
 
 export interface WorkerWithLimit extends Worker {
-    messagesLeft: number;
+    messagesRemaining: number;
 }
 
 export interface Task {
