@@ -117,9 +117,17 @@ function dispatch() {
                 try {
                     if (typeof data !== "string") {
                         idleWorker.messagesRemaining = 0;
-                        task.reject(new Error("Worker returned non-string success payload"));
+                        try {
+                            task.reject(new Error("Worker returned non-string success payload"));
+                        } catch {
+                            // ignore user reject handler throws
+                        }
                     } else {
-                        task.resolve(data);
+                        try {
+                            task.resolve(data);
+                        } catch {
+                            // ignore user resolve handler throws
+                        }
                     }
                 } finally {
                     releaseWorker(idleWorker);
@@ -134,7 +142,11 @@ function dispatch() {
             // Treat worker-reported errors as potentially unhealthy.
             idleWorker.messagesRemaining = 0;
             try {
-                task.reject(err);
+                try {
+                    task.reject(err);
+                } catch {
+                    // ignore user reject handler throws
+                }
             } finally {
                 releaseWorker(idleWorker);
             }
@@ -150,7 +162,11 @@ function dispatch() {
             idleWorker.messagesRemaining = 0;
             releaseWorker(idleWorker);
 
-            task.reject(err);
+            try {
+                task.reject(err);
+            } catch {
+                // ignore user reject handler throws
+            }
         }
     }
 }
@@ -188,7 +204,11 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
             const inFlight = clearInFlight(worker);
             if (inFlight) {
                 // reject the task that was assigned to this worker
-                inFlight.task.reject(new Error(`Worker crashed: ${e.message}`));
+                try {
+                    inFlight.task.reject(new Error(`Worker crashed: ${e.message}`));
+                } catch {
+                    // ignore user reject handler throws
+                }
             }
 
             // remove crashed worker
@@ -202,7 +222,11 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
             console.error("Worker message deserialization failed");
             const inFlight = clearInFlight(worker);
             if (inFlight) {
-                inFlight.task.reject(new Error("Worker message deserialization failed"));
+                try {
+                    inFlight.task.reject(new Error("Worker message deserialization failed"));
+                } catch {
+                    // ignore user reject handler throws
+                }
             }
 
             retireWorker(worker);
