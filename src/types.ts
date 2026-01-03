@@ -48,6 +48,8 @@ export interface Task {
 
 export type InFlight = { task: Task; messageHandler: (e: MessageEvent) => void };
 
+export type InFlightWithTimeout = InFlight & { timeoutId: number };
+
 export type ApiRequest = SignatureRequest | StsRequest | ResolveUrlRequest;
 
 // Parsing into this context helps avoid multi copies of requests

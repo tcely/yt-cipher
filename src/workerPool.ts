@@ -1,4 +1,4 @@
-import type { InFlight, Task, WorkerWithLimit } from "./types.ts";
+import type { InFlight, InFlightWithTimeout, Task, WorkerWithLimit } from "./types.ts";
 
 const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator.hardwareConcurrency || 1;
 
@@ -12,8 +12,17 @@ const MESSAGES_LIMIT = Number.isFinite(parsedMessagesLimit) && parsedMessagesLim
 const workers: WorkerWithLimit[] = [];
 const idleWorkerStack: WorkerWithLimit[] = [];
 const taskQueue: Task[] = [];
+// Track enqueue timestamps without extending `Task`'s type surface.
+const taskEnqueuedAt = new WeakMap<Task, number>();
 const inFlightTask = new WeakMap<WorkerWithLimit, InFlight>();
+// Workers that currently have an assigned task (purely "in-flight" tracking).
 const inFlightWorker: Set<WorkerWithLimit> = new Set<WorkerWithLimit>();
+// Workers that must not accept new tasks and must be retired after their current in-flight work finishes.
+const retireAfterFlight: Set<WorkerWithLimit> = new Set<WorkerWithLimit>();
+
+// Backpressure / liveness policies
+const MAX_TASK_AGE_MS = 30 * 60 * 1000; // 30 minutes
+const IN_FLIGHT_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes
 
 function removeWorkerFromTracking(worker: WorkerWithLimit) {
     const queueIdx = workers.indexOf(worker);
@@ -30,6 +39,7 @@ function retireWorker(worker: WorkerWithLimit) {
     removeWorkerFromTracking(worker);
     try {
         worker.terminate();
+        retireAfterFlight.delete(worker);
     } catch {
         // ignore termination errors
     }
@@ -100,6 +110,7 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
             // (Workers that were not actually in-flight have been terminated above.)
             for (const w of quarantined) {
                 inFlightWorker.add(w);
+                retireAfterFlight.add(w);
             }
 
             // Try to recover by recreating a fresh pool on the next tick.
@@ -116,14 +127,12 @@ function releaseWorker(
     const inFlight = clearInFlight(worker);
     if (!inFlight) return;
 
-    if (worker.messagesRemaining > 0) {
-        if (inFlightWorker.has(worker)) {
-            // Worker tracking is inconsistent
-            retireWorker(worker);
-        } else {
-            // Worker can take more work
-            idleWorkerStack.push(worker);
-        }
+    // Quarantine marker takes precedence: never return to idle once quarantined.
+    if (retireAfterFlight.has(worker)) {
+        retireWorker(worker);
+    } else if (worker.messagesRemaining > 0) {
+        // Worker can take more work
+        idleWorkerStack.push(worker);
     } else {
         // Worker hit its limit; remove & replace
         retireWorker(worker);
@@ -139,7 +148,21 @@ function setInFlight(
     messageHandler: (e: MessageEvent) => void,
 ) {
     inFlightWorker.add(worker);
-    inFlightTask.set(worker, { task, messageHandler });
+    const timeoutId = setTimeout(() => {
+        const inflight = clearInFlight(worker);
+        if (inflight) {
+            try {
+                inflight.task.reject(new Error("Worker task timed out"));
+            } catch {
+                // ignore user reject handler throws
+            }
+        }
+        retireWorker(worker);
+        scheduleRefillAndDispatch();
+    }, IN_FLIGHT_TIMEOUT_MS) as unknown as number;
+
+    inFlightTask.set(worker, { task, messageHandler, timeoutId } as InFlightWithTimeout);
+
 }
 
 function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
@@ -147,6 +170,8 @@ function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
     if (inFlight) {
         try {
             worker.removeEventListener("message", inFlight.messageHandler);
+            const timeoutId = (inFlight as InFlightWithTimeout).timeoutId;
+            if (typeof timeoutId === "number") clearTimeout(timeoutId);
         } finally {
             inFlightTask.delete(worker);
             inFlightWorker.delete(worker);
@@ -165,6 +190,16 @@ function dispatch() {
             continue;
         }
         const task = taskQueue.shift()!;
+        const enqueuedAt = taskEnqueuedAt.get(task) ?? Date.now();
+        if (enqueuedAt < (Date.now() - MAX_TASK_AGE_MS)) {
+            idleWorkerStack.push(idleWorker);
+            try {
+                task.reject(new Error("Task was queued longer than allowed"));
+            } catch {
+                // ignore user reject handler throws
+            }
+            continue;
+        }
 
         const messageHandler = (e: MessageEvent) => {
             const { type, data } = (e.data ?? {}) as { type?: string; data?: any };
@@ -244,7 +279,8 @@ export function execInPool(data: string): Promise<string> {
             return;
         }
 
-        const task = { data, resolve, reject };
+        const task: Task = { data, resolve, reject };
+        taskEnqueuedAt.set(task, Date.now());
         taskQueue.push(task);
         scheduleRefillAndDispatch();
     });
