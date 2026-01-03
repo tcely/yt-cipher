@@ -25,6 +25,7 @@ function removeWorkerFromTracking(worker: WorkerWithLimit) {
 function retireWorker(worker: WorkerWithLimit) {
     // Defensive: ensure we don't leak message handlers or keep stale in-flight state
     clearInFlight(worker);
+    inFlightWorker.delete(worker);
 
     removeWorkerFromTracking(worker);
     try {
