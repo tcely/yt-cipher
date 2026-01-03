@@ -40,8 +40,25 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
     refillScheduled = true;
     queueMicrotask(() => {
         refillScheduled = false;
-        fillWorkers(messagesLimit);
-        dispatch();
+        try {
+            fillWorkers(messagesLimit);
+            dispatch();
+        } catch (err) {
+            // Mark all workers as exhausted/unhealthy so they won't be reused.
+            for (const worker of workers) {
+                worker.messagesRemaining = 0;
+            }
+            // Reject and drain queued tasks so callers don't hang forever.
+            const e = err instanceof Error ? err : new Error(String(err));
+            while (taskQueue.length > 0) {
+                const t = taskQueue.shift()!;
+                try {
+                    t.reject(e);
+                } catch {
+                    // ignore user-handler failures; keep draining
+                }
+            }
+        }
     });
 }
 
