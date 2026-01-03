@@ -44,12 +44,22 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
             fillWorkers(messagesLimit);
             dispatch();
         } catch (err) {
-            // Mark all workers as exhausted/unhealthy so they won't be reused.
+            const e = err instanceof Error ? err : new Error(String(err));
+
+            // Reject any in-flight tasks so callers don't hang forever.
             for (const worker of workers) {
+                const inFlight = clearInFlight(worker);
+                if (inFlight) {
+                    try {
+                        inFlight.task.reject(e);
+                    } catch {
+                        // ignore user-handler failures
+                    }
+                }
                 worker.messagesRemaining = 0;
             }
+
             // Reject and drain queued tasks so callers don't hang forever.
-            const e = err instanceof Error ? err : new Error(String(err));
             while (taskQueue.length > 0) {
                 const t = taskQueue.shift()!;
                 try {
