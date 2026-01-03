@@ -47,28 +47,62 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
         } catch (err) {
             const e = err instanceof Error ? err : new Error(String(err));
 
-            // Reject any in-flight tasks so callers don't hang forever.
-            for (const worker of workers) {
-                const inFlight = clearInFlight(worker);
-                if (inFlight) {
-                    try {
-                        inFlight.task.reject(e);
-                    } catch {
-                        // ignore user-handler failures
-                    }
-                }
-                worker.messagesRemaining = 0;
+            // Suspicious state recovery:
+            // - Keep queued tasks intact so they can be processed after recovery.
+            // - Do NOT clear in-flight handlers for tracked workers here; allow in-flight work to complete normally.
+            // - Quarantine all tracked workers by draining `workers` and setting their budget to 0.
+            // - Retire all currently-idle workers immediately.
+            // - Any quarantined worker that is not actually in-flight has no path to be observed/released,
+            //   so terminate it now to avoid "zombie" workers.
+            console.error("Worker pool refill/dispatch failed; attempting recovery:", e);
+
+            const quarantined: WorkerWithLimit[] = [];
+            while (workers.length > 0) {
+                const w = workers.pop()!;
+                w.messagesRemaining = 0;
+                quarantined.push(w);
+            }
+            const quarantinedSet = new Set(quarantined);
+
+            while (idleWorkerStack.length > 0) {
+                const idle = idleWorkerStack.pop()!;
+                retireWorker(idle);
             }
 
-            // Reject and drain queued tasks so callers don't hang forever.
-            while (taskQueue.length > 0) {
-                const t = taskQueue.shift()!;
-                try {
-                    t.reject(e);
-                } catch {
-                    // ignore user-handler failures; keep draining
+            // Terminate quarantined workers that are not actually in-flight.
+            for (const w of quarantined) {
+                if (!inFlightTask.get(w)) {
+                    retireWorker(w);
                 }
             }
+
+            // Consistency check: every worker we believe is in-flight must have been quarantined.
+            // If an unexpected in-flight worker exists, reject/cleanup/terminate it.
+            for (const w of [...inFlightWorker]) {
+                if (quarantinedSet.has(w)) continue;
+                console.error("Found unexpected in-flight worker during recovery; rejecting and terminating it.");
+                try {
+                    const inFlight = clearInFlight(w);
+                    if (inFlight) {
+                        try {
+                            inFlight.task.reject(e);
+                        } catch {
+                            // ignore user reject handler throws
+                        }
+                    }
+                } finally {
+                    retireWorker(w);
+                }
+            }
+
+            // Track the workers being allowed to finish their assignments.
+            // (Workers that were not actually in-flight have been terminated above.)
+            for (const w of quarantined) {
+                inFlightWorker.add(w);
+            }
+
+            // Try to recover by recreating a fresh pool on the next tick.
+            scheduleRefillAndDispatch(messagesLimit);
         }
     });
 }
