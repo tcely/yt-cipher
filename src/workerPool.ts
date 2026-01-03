@@ -145,9 +145,12 @@ function setInFlight(
 function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
     const inFlight = inFlightTask.get(worker);
     if (inFlight) {
-        worker.removeEventListener("message", inFlight.messageHandler);
-        inFlightTask.delete(worker);
-        inFlightWorker.delete(worker);
+        try {
+            worker.removeEventListener("message", inFlight.messageHandler);
+        } finally {
+            inFlightTask.delete(worker);
+            inFlightWorker.delete(worker);
+        }
     }
     return inFlight;
 }
