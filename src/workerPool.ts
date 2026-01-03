@@ -154,13 +154,7 @@ export function execInPool(data: string): Promise<string> {
     return new Promise((resolve, reject) => {
         const task = { data, resolve, reject };
         taskQueue.push(task);
-        try {
-            dispatch();
-        } catch (err) {
-            const idx = taskQueue.indexOf(task);
-            if (idx >= 0) taskQueue.splice(idx, 1);
-            reject(err);
-        }
+        scheduleRefillAndDispatch();
     });
 }
 
