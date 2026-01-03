@@ -36,8 +36,8 @@ export interface ResolveUrlResponse {
     resolved_url: string;
 }
 
-export interface WorkerWithStatus extends Worker {
-    isIdle?: boolean;
+export interface WorkerWithLimit extends Worker {
+    messagesRemaining: number;
 }
 
 export interface Task {
@@ -45,6 +45,10 @@ export interface Task {
     resolve: (output: string) => void;
     reject: (error: any) => void;
 }
+
+export type InFlight = { task: Task; messageHandler: (e: MessageEvent) => void };
+
+export type InFlightWithTimeout = InFlight & { timeoutId: number };
 
 export type ApiRequest = SignatureRequest | StsRequest | ResolveUrlRequest;
 
