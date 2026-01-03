@@ -13,6 +13,7 @@ const workers: WorkerWithLimit[] = [];
 const idleWorkerStack: WorkerWithLimit[] = [];
 const taskQueue: Task[] = [];
 const inFlightTask = new WeakMap<WorkerWithLimit, InFlight>();
+const inFlightWorker: Set<WorkerWithLimit> = new Set<WorkerWithLimit>();
 
 function removeWorkerFromTracking(worker: WorkerWithLimit) {
     const queueIdx = workers.indexOf(worker);
@@ -97,6 +98,7 @@ function setInFlight(
     task: Task,
     messageHandler: (e: MessageEvent) => void,
 ) {
+    inFlightWorker.add(worker);
     inFlightTask.set(worker, { task, messageHandler });
 }
 
@@ -105,6 +107,7 @@ function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
     if (inFlight) {
         worker.removeEventListener("message", inFlight.messageHandler);
         inFlightTask.delete(worker);
+        inFlightWorker.delete(worker);
     }
     return inFlight;
 }
