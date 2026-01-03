@@ -117,8 +117,13 @@ function releaseWorker(
     if (!inFlight) return;
 
     if (worker.messagesRemaining > 0) {
-        // Worker can take more work
-        idleWorkerStack.push(worker);
+        if (inFlightWorker.has(worker)) {
+            // Worker tracking is inconsistent
+            retireWorker(worker);
+        } else {
+            // Worker can take more work
+            idleWorkerStack.push(worker);
+        }
     } else {
         // Worker hit its limit; remove & replace
         retireWorker(worker);
