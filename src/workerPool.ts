@@ -103,6 +103,11 @@ function dispatch() {
     if (workers.length < CONCURRENCY) fillWorkers(MESSAGES_LIMIT);
     while (idleWorkerStack.length > 0 && taskQueue.length > 0) {
         const idleWorker = idleWorkerStack.pop()!;
+        if (!Number.isFinite(idleWorker.messagesRemaining) || idleWorker.messagesRemaining <= 0) {
+            retireWorker(idleWorker);
+            scheduleRefillAndDispatch();
+            continue;
+        }
         const task = taskQueue.shift()!;
 
         const messageHandler = (e: MessageEvent) => {
