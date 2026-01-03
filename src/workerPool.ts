@@ -4,8 +4,10 @@ const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator
 
 // Keep the per-worker message budget consistent across the module.
 // (Optional env override for testing/tuning.)
-const MESSAGES_LIMIT =
-    parseInt(Deno.env.get("MESSAGES_LIMIT") || "", 10) || 10_000;
+const parsedMessagesLimit = parseInt(Deno.env.get("MESSAGES_LIMIT") || "", 10);
+const MESSAGES_LIMIT = Number.isFinite(parsedMessagesLimit) && parsedMessagesLimit > 0
+    ? parsedMessagesLimit
+    : 10_000;
 
 const workers: WorkerWithLimit[] = [];
 const idleWorkerStack: WorkerWithLimit[] = [];
