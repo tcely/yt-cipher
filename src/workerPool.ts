@@ -154,7 +154,12 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
             // Avoid leaving tasks stuck if workers cannot be created.
             const e = err instanceof Error ? err : new Error(String(err));
             while (taskQueue.length > 0) {
-                taskQueue.shift()!.reject(new Error(`Failed to start worker: ${e.message}`));
+                const t = taskQueue.shift()!;
+                try {
+                    t.reject(new Error(`Failed to start worker: ${e.message}`));
+                } catch {
+                    // ignore user-handler failures; keep draining
+                }
             }
             break;
         }
