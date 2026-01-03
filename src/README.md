@@ -6,10 +6,10 @@ Optional token to protect the API endpoints (used by [`server.ts`](../server.ts)
 - Type: string
 - Default: unset (no token enforcement, depending on server implementation)
 - Behavior:
-  - If set, clients must provide the expected token (e.g., via header/query—see [`server.ts`](../server.ts)) to access the API.
+  - If set, clients must provide the expected token (e.g., via header/query — see [`server.ts`](../server.ts)) to access the API.
 
 ### `HOST`
-Host/interface the HTTP server binds to (used by [`server.ts`](../server.ts)).
+IP address the HTTP server binds to (used by [`server.ts`](../server.ts)).
 
 - Type: string
 - Default: `0.0.0.0`
@@ -69,7 +69,8 @@ Controls the maximum number of workers used by the pool (used by [`src/workerPoo
 
 ### `MESSAGES_LIMIT`
 Controls how many tasks (messages) a single worker will process before being retired and replaced (used by [`src/workerPool.ts`](./workerPool.ts))
-This helps prevent long-lived workers from accumulating memory/GC pressure over time.
+
+This helps prevent long-lived workers from accumulating memory/garbage collection pressure over time.
 
 - Type: integer
 - Default: `10000`
