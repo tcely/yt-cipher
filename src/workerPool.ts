@@ -181,8 +181,23 @@ function dispatch() {
     }
 }
 
+// When set, the pool is considered "fatally" broken and new work should fail fast.
+// NOTE: This pull request includes the guard/checks, but does not actively set this value yet.
+// See the TODO comments below for what kind of decisions need to be made before proceeding.
+let poolInitError: Error | null = null;
+
 export function execInPool(data: string): Promise<string> {
     return new Promise((resolve, reject) => {
+        // TODO: Before enabling `poolInitError` by setting it anywhere:
+        // - Define what counts as a *fatal* pool failure (only worker construction? repeated crashes? permissions?).
+        // - Decide if/when it should be cleared (never vs. on later successful `fillWorkers()`).
+        // - Decide whether callers should always fail fast or whether retry/backoff should be attempted.
+        // Until those decisions are made, `poolInitError` should remain unset (null).
+        if (poolInitError) {
+            reject(poolInitError);
+            return;
+        }
+
         const task = { data, resolve, reject };
         taskQueue.push(task);
         scheduleRefillAndDispatch();
@@ -197,6 +212,10 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
         } catch (err) {
             // Avoid leaving tasks stuck if workers cannot be created.
             const e = err instanceof Error ? err : new Error(String(err));
+
+            // Example (intentionally not enabled): latch a fatal init/start failure so future calls fail fast.
+            // poolInitError ??= new Error(`Failed to start worker: ${e.message}`);
+
             while (taskQueue.length > 0) {
                 const t = taskQueue.shift()!;
                 try {
@@ -221,6 +240,9 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
                 }
             }
 
+            // Example (intentionally not enabled): if you decide worker crashes are fatal for the whole pool:
+            // poolInitError ??= new Error(`Worker crashed: ${e.message}`);
+
             // remove crashed worker
             retireWorker(worker);
 
@@ -238,6 +260,9 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
                     // ignore user reject handler throws
                 }
             }
+
+            // Example (intentionally not enabled): if you decide message deserialization failures are fatal:
+            // poolInitError ??= new Error("Worker message deserialization failed");
 
             retireWorker(worker);
             scheduleRefillAndDispatch(messagesLimit);
