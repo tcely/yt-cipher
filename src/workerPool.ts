@@ -24,6 +24,20 @@ const retireAfterFlight: Set<WorkerWithLimit> = new Set<WorkerWithLimit>();
 const MAX_TASK_AGE_MS = 30 * 60 * 1000; // 30 minutes
 const IN_FLIGHT_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes
 
+// When set, the pool is considered "fatally" broken and new work should fail fast.
+let poolInitError: Error | null = null;
+
+// Bounded recovery with exponential backoff
+const RECOVERY_BACKOFF_BASE_MS = 25;
+const RECOVERY_BACKOFF_MAX_MS = 5_000;
+const RECOVERY_FAILURE_THRESHOLD = 5;
+let recoveryBackoffMs = RECOVERY_BACKOFF_BASE_MS;
+let recoveryFailures = 0;
+
+let recoveryTimerId: number | null = null;
+
+let refillScheduled = false;
+
 function removeWorkerFromTracking(worker: WorkerWithLimit) {
     const queueIdx = workers.indexOf(worker);
     if (queueIdx >= 0) workers.splice(queueIdx, 1);
@@ -45,18 +59,38 @@ function retireWorker(worker: WorkerWithLimit) {
     }
 }
 
-let refillScheduled = false;
-
 function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
+    // If we've latched a fatal failure, fail fast and drain anything still queued.
+    if (poolInitError) {
+        drainAndRejectQueuedTasks(poolInitError);
+        return;
+    }
+
+    // Avoid immediate recursive microtask rescheduling and avoid piling up timers.
     if (refillScheduled) return;
     refillScheduled = true;
+
     queueMicrotask(() => {
         refillScheduled = false;
+
+        // If a backoff timer is already pending, let it drive the next attempt.
+        if (recoveryTimerId !== null) return;
+
         try {
             fillWorkers(messagesLimit);
             dispatch();
+
+            // Successful run: reset failure counter/backoff.
+            recoveryFailures = 0;
+            recoveryBackoffMs = RECOVERY_BACKOFF_BASE_MS;
         } catch (err) {
             const e = err instanceof Error ? err : new Error(String(err));
+            recoveryFailures += 1;
+
+            console.error(
+                `Worker pool refill/dispatch failed (attempt ${recoveryFailures}/${RECOVERY_FAILURE_THRESHOLD}); will retry with backoff:`,
+                e,
+            );
 
             // Suspicious state recovery:
             // - Keep queued tasks intact so they can be processed after recovery.
@@ -65,7 +99,6 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
             // - Retire all currently-idle workers immediately.
             // - Any quarantined worker that is not actually in-flight has no path to be observed/released,
             //   so terminate it now to avoid "zombie" workers.
-            console.error("Worker pool refill/dispatch failed; attempting recovery:", e);
 
             const quarantined: WorkerWithLimit[] = [];
             while (workers.length > 0) {
@@ -110,8 +143,23 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
                 }
             }
 
-            // Try to recover by recreating a fresh pool on the next tick.
-            scheduleRefillAndDispatch(messagesLimit);
+            // If we've exceeded our bounded recovery threshold, latch the pool failure and drain queued tasks.
+            if (recoveryFailures >= RECOVERY_FAILURE_THRESHOLD) {
+                poolInitError ??= new Error(
+                    `Worker pool failed to recover after ${recoveryFailures} attempts: ${e.message}`,
+                );
+                drainAndRejectQueuedTasks(poolInitError);
+                return;
+            }
+
+            // Exponential backoff with cap (no immediate recursive microtasks).
+            const delay = Math.min(recoveryBackoffMs, RECOVERY_BACKOFF_MAX_MS);
+            recoveryBackoffMs = Math.min(recoveryBackoffMs * 2, RECOVERY_BACKOFF_MAX_MS);
+
+            recoveryTimerId = setTimeout(() => {
+                recoveryTimerId = null;
+                scheduleRefillAndDispatch(messagesLimit);
+            }, delay) as unknown as number;
         }
     });
 }
@@ -259,10 +307,16 @@ function dispatch() {
     }
 }
 
-// When set, the pool is considered "fatally" broken and new work should fail fast.
-// NOTE: This pull request includes the guard/checks, but does not actively set this value yet.
-// See the TODO comments below for what kind of decisions need to be made before proceeding.
-let poolInitError: Error | null = null;
+function drainAndRejectQueuedTasks(err: Error) {
+    while (taskQueue.length > 0) {
+        const t = taskQueue.shift()!;
+        try {
+          t.reject(err);
+        } catch {
+          // ignore user-handler failures; keep draining
+        }
+    }
+}
 
 export function execInPool(data: string): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -295,14 +349,7 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
             // Example (intentionally not enabled): latch a fatal init/start failure so future calls fail fast.
             // poolInitError ??= new Error(`Failed to start worker: ${e.message}`);
 
-            while (taskQueue.length > 0) {
-                const t = taskQueue.shift()!;
-                try {
-                    t.reject(new Error(`Failed to start worker: ${e.message}`));
-                } catch {
-                    // ignore user-handler failures; keep draining
-                }
-            }
+            drainAndRejectQueuedTasks(new Error(`Failed to start worker: ${e.message}`));
             break;
         }
 
