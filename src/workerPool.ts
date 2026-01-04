@@ -72,6 +72,10 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
                 const w = workers.pop()!;
                 w.messagesRemaining = 0;
                 quarantined.push(w);
+                // Track the workers being allowed to finish their assignments.
+                // When called below, retireWorker is expected to remove from both of these sets.
+                inFlightWorker.add(w);
+                retireAfterFlight.add(w);
             }
             const quarantinedSet = new Set(quarantined);
 
@@ -104,13 +108,6 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
                 } finally {
                     retireWorker(w);
                 }
-            }
-
-            // Track the workers being allowed to finish their assignments.
-            // (Workers that were not actually in-flight have been terminated above.)
-            for (const w of quarantined) {
-                inFlightWorker.add(w);
-                retireAfterFlight.add(w);
             }
 
             // Try to recover by recreating a fresh pool on the next tick.
