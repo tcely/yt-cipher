@@ -246,7 +246,7 @@ function takeIdleWorker(): WorkerWithLimit | undefined {
             releaseWorker(w);
             continue;
         }
-        clearIdle(w);             // now reserved (not idle)
+        clearIdle(w); // now reserved (not idle)
         return w;
     }
     return undefined;
@@ -259,39 +259,39 @@ function dispatch() {
         const task = taskQueue.shift()!;
         const enqueuedAt = taskEnqueuedAt.get(task) ?? Date.now();
         if (enqueuedAt < (Date.now() - MAX_TASK_AGE_MS)) {
-            releaseWorker(idleWorker);
-            safeCall(task.reject, new Error("Task was queued longer than allowed"), { label: "task.reject(maxAge)", log: true });
+            try {
+                safeCall(task.reject, new Error("Task was queued longer than allowed"), { label: "task.reject(maxAge)", log: true });
+            } finally {
+                releaseWorker(idleWorker);
+            }
             continue;
         }
 
         const messageHandler = (e: MessageEvent) => {
             const { type, data } = (e.data ?? {}) as { type?: string; data?: any };
+            try {
+                const inFlight = clearInFlight(idleWorker);
 
-            if (type === "success") {
-                try {
-                    if (typeof data !== "string") {
+                if (type === "success") {
+                    if (typeof data === "string") {
+                        safeCall(task.resolve, data, { label: "task.resolve", log: true });
+                    } else {
                         idleWorker.messagesRemaining = 0;
                         safeCall(task.reject, new Error("Worker returned non-string success payload"), {
                             label: "task.reject(nonStringSuccess)",
                             log: true,
                         });
-                    } else {
-                        safeCall(task.resolve, data, { label: "task.resolve", log: true });
                     }
-                } finally {
-                    releaseWorker(idleWorker);
+                } else {
+                    // Treat worker-reported errors as potentially unhealthy.
+                    idleWorker.messagesRemaining = 0;
+
+                    console.error("Received error from worker:", data);
+                    const err = new Error(data?.message ?? "Worker error");
+                    err.stack = data?.stack;
+
+                    safeCall(task.reject, err, { label: "task.reject(workerError)", log: true });
                 }
-                return;
-            }
-
-            console.error("Received error from worker:", data);
-            const err = new Error(data?.message ?? "Worker error");
-            err.stack = data?.stack;
-
-            // Treat worker-reported errors as potentially unhealthy.
-            idleWorker.messagesRemaining = 0;
-            try {
-                safeCall(task.reject, err, { label: "task.reject(workerError)", log: true });
             } finally {
                 releaseWorker(idleWorker);
             }
@@ -305,9 +305,14 @@ function dispatch() {
         } catch (err) {
             // Worker may be unusable; replace it to avoid pool deadlocks.
             idleWorker.messagesRemaining = 0;
-            releaseWorker(idleWorker);
-
-            safeCall(task.reject, err, { label: "task.reject(postMessageFailure)", log: true });
+            try {
+                const inFlight = clearInFlight(idleWorker);
+                if (inFlight) {
+                    safeCall(inflight.task.reject, err, { label: "task.reject(postMessageFailure)", log: true });
+                }
+            } finally {
+                releaseWorker(idleWorker);
+            }
         }
     }
 }
