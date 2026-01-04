@@ -107,27 +107,31 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
             //   so terminate it now to avoid "zombie" workers.
 
             const quarantined: WorkerWithLimit[] = [];
+            const retireImmediately: WorkerWithLimit[] = [];
             while (workers.length > 0) {
                 const w = workers.pop()!;
                 w.messagesRemaining = 0;
                 quarantined.push(w);
                 // Track the workers being allowed to finish their assignments.
                 // When called below, retireWorker is expected to remove from both of these sets.
-                inFlightWorker.add(w);
                 retireAfterFlight.add(w);
+                if (inFlightTask.has(w)) {
+                    inFlightWorker.add(w);
+                } else {
+                    retireImmediately.push(w);
+                }
             }
             const quarantinedSet = new Set(quarantined);
 
             while (idleWorkerStack.length > 0) {
                 const idle = idleWorkerStack.pop()!;
-                retireWorker(idle);
+                retireImmediately.push(idle);
             }
 
             // Terminate quarantined workers that are not actually in-flight.
-            for (const w of quarantined) {
-                if (!inFlightTask.get(w)) {
-                    retireWorker(w);
-                }
+            while (retireImmediately.length > 0) {
+                const w = retireImmediately.pop()!;
+                retireWorker(w);
             }
 
             // Consistency check: every worker we believe is in-flight must have been quarantined.
