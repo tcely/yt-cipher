@@ -50,6 +50,21 @@ export type InFlight = { task: Task; messageHandler: (e: MessageEvent) => void }
 
 export type InFlightWithTimeout = InFlight & { timeoutId: number };
 
+export type SafeCallOptions = {
+    /**
+     * Optional label used when logging errors.
+     */
+    label?: string;
+    /**
+     * If `true`, logs to console.error. If a function, called with (label, err).
+     */
+    log?: boolean | ((label: string, err: unknown) => void);
+    /**
+     * Optional callback invoked when the call throws.
+     */
+    onError?: (err: unknown) => void;
+};
+
 export type ApiRequest = SignatureRequest | StsRequest | ResolveUrlRequest;
 
 // Parsing into this context helps avoid multi copies of requests

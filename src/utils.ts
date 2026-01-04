@@ -1,3 +1,5 @@
+import type { SafeCallOptions } from "./types.ts";
+
 const ALLOWED_HOSTNAMES = ["youtube.com", "www.youtube.com", "m.youtube.com"];
 
 export function validateAndNormalizePlayerUrl(playerUrl: string): string {
@@ -38,4 +40,51 @@ export function extractPlayerId(playerUrl: string): string {
         }
     }
     return 'unknown';
+}
+function looksLikeSafeCallOptions(v: unknown): v is SafeCallOptions {
+    if (!v || typeof v !== "object") return false;
+    const o = v as Record<string, unknown>;
+    return ("label" in o) || ("log" in o) || ("onError" in o);
+}
+
+/**
+ * Calls `fn` safely (swallows exceptions), optionally logging and/or invoking `onError`.
+ *
+ * Preserves `this` by applying the function with the caller's `this`.
+ * - Typical usage: safeCall(task.resolve, data)
+ * - If you need to preserve a specific receiver: safeCall.call(obj, obj.method, arg)
+ */
+export function safeCall(fn: unknown, ...args: unknown[]): unknown {
+    if (typeof fn !== "function") return undefined;
+
+    let options: SafeCallOptions | undefined;
+    if (args.length > 0 && looksLikeSafeCallOptions(args[args.length - 1])) {
+        options = args.pop() as SafeCallOptions;
+    }
+
+    const label = options?.label ?? "safeCall";
+
+    try {
+        return Reflect.apply(fn, this, args);
+    } catch (err) {
+        try {
+            options?.onError?.(err);
+        } catch {
+            // ignore onError throws
+        }
+
+        const log = options?.log;
+        if (typeof log === "function") {
+            try {
+                log(label, err);
+            } catch {
+                // ignore logger throws
+            }
+        } else if (log) {
+            const prefix = options?.label ? `[safeCall:${label}]` : "[safeCall]";
+            console.error(prefix, err);
+        }
+
+        return undefined;
+    }
 }

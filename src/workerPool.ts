@@ -1,4 +1,5 @@
 import type { InFlight, InFlightWithTimeout, Task, WorkerWithLimit } from "./types.ts";
+import { safeCall } from "./utils.ts";
 
 const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator.hardwareConcurrency || 1;
 
@@ -132,11 +133,7 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
                 try {
                     const inFlight = clearInFlight(w);
                     if (inFlight) {
-                        try {
-                            inFlight.task.reject(e);
-                        } catch {
-                            // ignore user reject handler throws
-                        }
+                        safeCall(inFlight.task.reject, e, { label: "inFlight.task.reject(recovery)", log: true });
                     }
                 } finally {
                     retireWorker(w);
@@ -199,11 +196,7 @@ function setInFlight(
     const timeoutId = setTimeout(() => {
         const inflight = clearInFlight(worker);
         if (inflight) {
-            try {
-                inflight.task.reject(new Error("Worker task timed out"));
-            } catch {
-                // ignore user reject handler throws
-            }
+            safeCall(inflight.task.reject, new Error("Worker task timed out"), { label: "inFlight.task.reject(timeout)", log: true });
         }
         retireWorker(worker);
         scheduleRefillAndDispatch();
@@ -241,11 +234,7 @@ function dispatch() {
         const enqueuedAt = taskEnqueuedAt.get(task) ?? Date.now();
         if (enqueuedAt < (Date.now() - MAX_TASK_AGE_MS)) {
             releaseWorker(idleWorker);
-            try {
-                task.reject(new Error("Task was queued longer than allowed"));
-            } catch {
-                // ignore user reject handler throws
-            }
+            safeCall(task.reject, new Error("Task was queued longer than allowed"), { label: "task.reject(maxAge)", log: true });
             continue;
         }
 
@@ -256,17 +245,12 @@ function dispatch() {
                 try {
                     if (typeof data !== "string") {
                         idleWorker.messagesRemaining = 0;
-                        try {
-                            task.reject(new Error("Worker returned non-string success payload"));
-                        } catch {
-                            // ignore user reject handler throws
-                        }
+                        safeCall(task.reject, new Error("Worker returned non-string success payload"), {
+                            label: "task.reject(nonStringSuccess)",
+                            log: true,
+                        });
                     } else {
-                        try {
-                            task.resolve(data);
-                        } catch {
-                            // ignore user resolve handler throws
-                        }
+                        safeCall(task.resolve, data, { label: "task.resolve", log: true });
                     }
                 } finally {
                     releaseWorker(idleWorker);
@@ -281,11 +265,7 @@ function dispatch() {
             // Treat worker-reported errors as potentially unhealthy.
             idleWorker.messagesRemaining = 0;
             try {
-                try {
-                    task.reject(err);
-                } catch {
-                    // ignore user reject handler throws
-                }
+                safeCall(task.reject, err, { label: "task.reject(workerError)", log: true });
             } finally {
                 releaseWorker(idleWorker);
             }
@@ -301,11 +281,7 @@ function dispatch() {
             idleWorker.messagesRemaining = 0;
             releaseWorker(idleWorker);
 
-            try {
-                task.reject(err);
-            } catch {
-                // ignore user reject handler throws
-            }
+            safeCall(task.reject, err, { label: "task.reject(postMessageFailure)", log: true });
         }
     }
 }
@@ -313,11 +289,7 @@ function dispatch() {
 function drainAndRejectQueuedTasks(err: Error) {
     while (taskQueue.length > 0) {
         const t = taskQueue.shift()!;
-        try {
-          t.reject(err);
-        } catch {
-          // ignore user-handler failures; keep draining
-        }
+        safeCall(t.reject, err, { label: "t.reject(drain)", log: true });
     }
 }
 
@@ -362,11 +334,10 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
             const inFlight = clearInFlight(worker);
             if (inFlight) {
                 // reject the task that was assigned to this worker
-                try {
-                    inFlight.task.reject(new Error(`Worker crashed: ${e.message}`));
-                } catch {
-                    // ignore user reject handler throws
-                }
+                safeCall(inFlight.task.reject, new Error(`Worker crashed: ${e.message}`), {
+                    label: "inFlight.task.reject(workerCrash)",
+                    log: true,
+                });
             }
 
             // Example (intentionally not enabled): if you decide worker crashes are fatal for the whole pool:
@@ -383,11 +354,10 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
             console.error("Worker message deserialization failed");
             const inFlight = clearInFlight(worker);
             if (inFlight) {
-                try {
-                    inFlight.task.reject(new Error("Worker message deserialization failed"));
-                } catch {
-                    // ignore user reject handler throws
-                }
+                safeCall(inFlight.task.reject, new Error("Worker message deserialization failed"), {
+                    label: "inFlight.task.reject(messageerror)",
+                    log: true,
+                });
             }
 
             // Example (intentionally not enabled): if you decide message deserialization failures are fatal:
