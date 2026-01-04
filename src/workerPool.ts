@@ -11,6 +11,7 @@ const MESSAGES_LIMIT = Number.isFinite(parsedMessagesLimit) && parsedMessagesLim
     : 10_000;
 
 const workers: WorkerWithLimit[] = [];
+const idleWorkerSet = new Set<WorkerWithLimit>();
 const idleWorkerStack: WorkerWithLimit[] = [];
 const taskQueue: Task[] = [];
 // Track enqueue timestamps without extending `Task`'s type surface.
@@ -40,24 +41,28 @@ let recoveryTimerId: number | null = null;
 let refillScheduled = false;
 
 function removeWorkerFromTracking(worker: WorkerWithLimit) {
+    clearIdle(worker);
     const queueIdx = workers.indexOf(worker);
     if (queueIdx >= 0) workers.splice(queueIdx, 1);
-    const stackIdx = idleWorkerStack.indexOf(worker);
-    if (stackIdx >= 0) idleWorkerStack.splice(stackIdx, 1);
 }
 
 function retireWorker(worker: WorkerWithLimit) {
     // Defensive: ensure we don't leak message handlers or keep stale in-flight state
-    clearInFlight(worker);
+    const inFlight = clearInFlight(worker);
+    if (inFlight) {
+        safeCall(inFlight.task.reject, new Error("Worker was retired while task was in-flight"), {
+            label: "inFlight.task.reject(retireWorker)",
+            log: true,
+        });
+    }
     inFlightWorker.delete(worker);
 
     removeWorkerFromTracking(worker);
-    try {
-        worker.terminate();
-        retireAfterFlight.delete(worker);
-    } catch {
-        // ignore termination errors
-    }
+    safeCall(worker.terminate.bind(worker), {
+        label: "worker.terminate(retireWorker)",
+        log: true,
+    });
+    retireAfterFlight.delete(worker);
 }
 
 function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
@@ -137,6 +142,7 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
                     }
                 } finally {
                     retireWorker(w);
+                    // scheduleRefillAndDispatch(); // already here
                 }
             }
 
@@ -173,11 +179,7 @@ function releaseWorker(
         retireWorker(worker);
     } else if (worker.messagesRemaining > 0) {
         // Worker can take more work
-        // Remove this worker from any previous position
-        const stackIdx = idleWorkerStack.indexOf(worker);
-        if (stackIdx >= 0) idleWorkerStack.splice(stackIdx, 1);
-        // Add only once at the top of the stack
-        idleWorkerStack.push(worker);
+        setIdle(worker);
     } else {
         // Worker hit its limit; remove & replace
         retireWorker(worker);
@@ -187,6 +189,12 @@ function releaseWorker(
     scheduleRefillAndDispatch(messagesLimit);
 }
 
+function setIdle(worker: WorkerWithLimit) {
+    if (idleWorkerSet.has(worker)) return; // avoid stack duplicates
+    idleWorkerStack.push(worker);
+    idleWorkerSet.add(worker);
+}
+
 function setInFlight(
     worker: WorkerWithLimit,
     task: Task,
@@ -194,16 +202,24 @@ function setInFlight(
 ) {
     inFlightWorker.add(worker);
     const timeoutId = setTimeout(() => {
-        const inflight = clearInFlight(worker);
-        if (inflight) {
-            safeCall(inflight.task.reject, new Error("Worker task timed out"), { label: "inFlight.task.reject(timeout)", log: true });
+        try {
+            const inFlight = clearInFlight(worker);
+            if (inFlight) {
+                safeCall(inflight.task.reject, new Error("Worker task timed out"), { label: "inFlight.task.reject(timeout)", log: true });
+            }
+        } finally {
+            retireWorker(worker);
+            scheduleRefillAndDispatch();
         }
-        retireWorker(worker);
-        scheduleRefillAndDispatch();
     }, IN_FLIGHT_TIMEOUT_MS) as unknown as number;
 
     inFlightTask.set(worker, { task, messageHandler, timeoutId } as InFlightWithTimeout);
 
+}
+
+function clearIdle(worker: WorkerWithLimit): Boolean {
+    const wasIdle = idleWorkerSet.delete(worker);
+    return wasIdle;
 }
 
 function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
@@ -221,15 +237,25 @@ function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
     return inFlight;
 }
 
-function dispatch() {
-    if (workers.length < CONCURRENCY) fillWorkers(MESSAGES_LIMIT);
-    while (idleWorkerStack.length > 0 && taskQueue.length > 0) {
-        const idleWorker = idleWorkerStack.pop()!;
-        if (!Number.isFinite(idleWorker.messagesRemaining) || idleWorker.messagesRemaining <= 0 || retireAfterFlight.has(idleWorker)) {
-            idleWorker.messagesRemaining = 0;
-            releaseWorker(idleWorker);
+function takeIdleWorker(): WorkerWithLimit | undefined {
+    while (idleWorkerStack.length > 0) {
+        const w = idleWorkerStack.pop()!;
+        if (!idleWorkerSet.has(w)) continue; // stale entry
+        if (!Number.isFinite(w.messagesRemaining) || w.messagesRemaining <= 0 || retireAfterFlight.has(w)) {
+            w.messagesRemaining = 0;
+            releaseWorker(w);
             continue;
         }
+        clearIdle(w);             // now reserved (not idle)
+        return w;
+    }
+    return undefined;
+}
+
+function dispatch() {
+    let idleWorker: ReturnType<typeof takeIdleWorker>;
+    if (workers.length < CONCURRENCY) fillWorkers(MESSAGES_LIMIT);
+    while (undefined !== (idleWorker = takeIdleWorker()) && taskQueue.length > 0) {
         const task = taskQueue.shift()!;
         const enqueuedAt = taskEnqueuedAt.get(task) ?? Date.now();
         if (enqueuedAt < (Date.now() - MAX_TASK_AGE_MS)) {
@@ -301,7 +327,10 @@ export function execInPool(data: string): Promise<string> {
         // - Decide whether callers should always fail fast or whether retry/backoff should be attempted.
         // Until those decisions are made, `poolInitError` should remain unset (null).
         if (poolInitError) {
-            reject(poolInitError);
+            safeCall(reject, poolInitError), {
+                label: "reject(execInPool)",
+                log: true,
+            });
             return;
         }
 
@@ -325,46 +354,49 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
             // poolInitError ??= new Error(`Failed to start worker: ${e.message}`);
 
             drainAndRejectQueuedTasks(new Error(`Failed to start worker: ${e.message}`));
-            break;
+            throw e;
         }
 
         worker.messagesRemaining = messagesLimit;
         worker.addEventListener("error", (e: ErrorEvent) => {
             console.error("Worker crashed:", e.message);
-            const inFlight = clearInFlight(worker);
-            if (inFlight) {
-                // reject the task that was assigned to this worker
-                safeCall(inFlight.task.reject, new Error(`Worker crashed: ${e.message}`), {
-                    label: "inFlight.task.reject(workerCrash)",
-                    log: true,
-                });
+            try {
+                const inFlight = clearInFlight(worker);
+                if (inFlight) {
+                    // reject the task that was assigned to this worker
+                    safeCall(inFlight.task.reject, new Error(`Worker crashed: ${e.message}`), {
+                        label: "inFlight.task.reject(workerCrash)",
+                        log: true,
+                    });
+                }
+            } finally {
+                // Example (intentionally not enabled): if you decide worker crashes are fatal for the whole pool:
+                // poolInitError ??= new Error(`Worker crashed: ${e.message}`);
+
+                retireWorker(worker);
+                scheduleRefillAndDispatch(messagesLimit);
+
             }
-
-            // Example (intentionally not enabled): if you decide worker crashes are fatal for the whole pool:
-            // poolInitError ??= new Error(`Worker crashed: ${e.message}`);
-
-            // remove crashed worker
-            retireWorker(worker);
-
-            // replace any missing workers + ensure queued tasks continue processing
-            scheduleRefillAndDispatch(messagesLimit);
         });
 
         worker.addEventListener("messageerror", () => {
             console.error("Worker message deserialization failed");
-            const inFlight = clearInFlight(worker);
-            if (inFlight) {
-                safeCall(inFlight.task.reject, new Error("Worker message deserialization failed"), {
-                    label: "inFlight.task.reject(messageerror)",
-                    log: true,
-                });
+            try {
+                const inFlight = clearInFlight(worker);
+                if (inFlight) {
+                    safeCall(inFlight.task.reject, new Error("Worker message deserialization failed"), {
+                        label: "inFlight.task.reject(messageerror)",
+                        log: true,
+                    });
+                }
+            } finally {
+                // Example (intentionally not enabled): if you decide message deserialization failures are fatal:
+                // poolInitError ??= new Error("Worker message deserialization failed");
+
+                retireWorker(worker);
+                scheduleRefillAndDispatch(messagesLimit);
+
             }
-
-            // Example (intentionally not enabled): if you decide message deserialization failures are fatal:
-            // poolInitError ??= new Error("Worker message deserialization failed");
-
-            retireWorker(worker);
-            scheduleRefillAndDispatch(messagesLimit);
         });
 
         workers.push(worker);

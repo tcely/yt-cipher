@@ -42,8 +42,20 @@ export function extractPlayerId(playerUrl: string): string {
     return 'unknown';
 }
 function looksLikeSafeCallOptions(v: unknown): v is SafeCallOptions {
-    if (!v || typeof v !== "object") return false;
+    if (v === null || typeof v !== "object") return false;
     const o = v as Record<string, unknown>;
+
+    // If present, validate types
+    if ("label" in o && o.label !== undefined && typeof o.label !== "string") return false;
+
+    if ("log" in o && o.log !== undefined) {
+        const log = o.log;
+        if (typeof log !== "boolean" && typeof log !== "function") return false;
+    }
+
+    if ("onError" in o && o.onError !== undefined && typeof o.onError !== "function") return false;
+
+    // Only consider it options if it has at least one of the known keys
     return ("label" in o) || ("log" in o) || ("onError" in o);
 }
 
@@ -65,7 +77,8 @@ export function safeCall(fn: unknown, ...args: unknown[]): unknown {
     const label = options?.label ?? "safeCall";
 
     try {
-        return Reflect.apply(fn, this, args);
+        const receiver = (this ?? globalThis);
+        return Reflect.apply(fn, receiver, args);
     } catch (err) {
         try {
             options?.onError?.(err);
