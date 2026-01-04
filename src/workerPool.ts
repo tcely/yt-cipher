@@ -84,6 +84,12 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
 
         try {
             fillWorkers(messagesLimit);
+            // Opportunistically compact the stack.
+            // Extra pops for stale entries may eventually slow down dispatch.
+            if (idleWorkerStack.length > (16 + idleWorkerSet.size * 2)) {
+                idleWorkerStack.length = 0;
+                idleWorkerStack.push(...idleWorkerSet);
+            }
             dispatch();
 
             // Successful run: reset failure counter/backoff.
