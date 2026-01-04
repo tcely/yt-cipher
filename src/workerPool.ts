@@ -359,11 +359,6 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
         } catch (err) {
             // Avoid leaving tasks stuck if workers cannot be created.
             const e = err instanceof Error ? err : new Error(String(err));
-
-            // Example (intentionally not enabled): latch a fatal init/start failure so future calls fail fast.
-            // poolInitError ??= new Error(`Failed to start worker: ${e.message}`);
-
-            drainAndRejectQueuedTasks(new Error(`Failed to start worker: ${e.message}`));
             throw e;
         }
 
