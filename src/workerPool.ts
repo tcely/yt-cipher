@@ -205,7 +205,7 @@ function setInFlight(
         try {
             const inFlight = clearInFlight(worker);
             if (inFlight) {
-                safeCall(inflight.task.reject, new Error("Worker task timed out"), { label: "inFlight.task.reject(timeout)", log: true });
+                safeCall(inFlight.task.reject, new Error("Worker task timed out"), { label: "inFlight.task.reject(timeout)", log: true });
             }
         } finally {
             retireWorker(worker);
@@ -217,7 +217,7 @@ function setInFlight(
 
 }
 
-function clearIdle(worker: WorkerWithLimit): Boolean {
+function clearIdle(worker: WorkerWithLimit): boolean {
     const wasIdle = idleWorkerSet.delete(worker);
     return wasIdle;
 }
@@ -332,7 +332,7 @@ export function execInPool(data: string): Promise<string> {
         // - Decide whether callers should always fail fast or whether retry/backoff should be attempted.
         // Until those decisions are made, `poolInitError` should remain unset (null).
         if (poolInitError) {
-            safeCall(reject, poolInitError), {
+            safeCall(reject, poolInitError, {
                 label: "reject(execInPool)",
                 log: true,
             });
@@ -405,7 +405,7 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
         });
 
         workers.push(worker);
-        idleWorkerStack.push(worker);
+        setIdle(worker);
     }
 }
 
