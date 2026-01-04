@@ -256,13 +256,14 @@ function dispatch() {
     let idleWorker: ReturnType<typeof takeIdleWorker>;
     if (workers.length < CONCURRENCY) fillWorkers(MESSAGES_LIMIT);
     while (undefined !== (idleWorker = takeIdleWorker()) && taskQueue.length > 0) {
+        const worker = idleWorker; // capture for closure
         const task = taskQueue.shift()!;
         const enqueuedAt = taskEnqueuedAt.get(task) ?? Date.now();
         if (enqueuedAt < (Date.now() - MAX_TASK_AGE_MS)) {
             try {
                 safeCall(task.reject, new Error("Task was queued longer than allowed"), { label: "task.reject(maxAge)", log: true });
             } finally {
-                releaseWorker(idleWorker);
+                releaseWorker(worker);
             }
             continue;
         }
@@ -270,13 +271,13 @@ function dispatch() {
         const messageHandler = (e: MessageEvent) => {
             const { type, data } = (e.data ?? {}) as { type?: string; data?: any };
             try {
-                const inFlight = clearInFlight(idleWorker);
+                const inFlight = clearInFlight(worker);
 
                 if (type === "success") {
                     if (typeof data === "string") {
                         safeCall(task.resolve, data, { label: "task.resolve", log: true });
                     } else {
-                        idleWorker.messagesRemaining = 0;
+                        worker.messagesRemaining = 0;
                         safeCall(task.reject, new Error("Worker returned non-string success payload"), {
                             label: "task.reject(nonStringSuccess)",
                             log: true,
@@ -284,7 +285,7 @@ function dispatch() {
                     }
                 } else {
                     // Treat worker-reported errors as potentially unhealthy.
-                    idleWorker.messagesRemaining = 0;
+                    worker.messagesRemaining = 0;
 
                     console.error("Received error from worker:", data);
                     const err = new Error(data?.message ?? "Worker error");
@@ -293,25 +294,25 @@ function dispatch() {
                     safeCall(task.reject, err, { label: "task.reject(workerError)", log: true });
                 }
             } finally {
-                releaseWorker(idleWorker);
+                releaseWorker(worker);
             }
         };
 
         try {
-            idleWorker.messagesRemaining -= 1;
-            setInFlight(idleWorker, task, messageHandler);
-            idleWorker.addEventListener("message", messageHandler);
-            idleWorker.postMessage(task.data);
+            worker.messagesRemaining -= 1;
+            setInFlight(worker, task, messageHandler);
+            worker.addEventListener("message", messageHandler);
+            worker.postMessage(task.data);
         } catch (err) {
             // Worker may be unusable; replace it to avoid pool deadlocks.
-            idleWorker.messagesRemaining = 0;
+            worker.messagesRemaining = 0;
             try {
-                const inFlight = clearInFlight(idleWorker);
+                const inFlight = clearInFlight(worker);
                 if (inFlight) {
-                    safeCall(inflight.task.reject, err, { label: "task.reject(postMessageFailure)", log: true });
+                    safeCall(inFlight.task.reject, err, { label: "task.reject(postMessageFailure)", log: true });
                 }
             } finally {
-                releaseWorker(idleWorker);
+                releaseWorker(worker);
             }
         }
     }
