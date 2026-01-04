@@ -168,15 +168,18 @@ function releaseWorker(
     worker: WorkerWithLimit,
     messagesLimit: number = MESSAGES_LIMIT,
 ) {
-    // Cleanup any tracked in-flight state (if present), but do not short-circuit:
-    // callers may invoke `releaseWorker()` in paths where the task was never successfully tracked.
-    clearInFlight(worker);
+    const inFlight = clearInFlight(worker);
+    // const hadInFlight = Boolean(inFlight);
 
     // Quarantine marker takes precedence: never return to idle once quarantined.
     if (retireAfterFlight.has(worker)) {
         retireWorker(worker);
     } else if (worker.messagesRemaining > 0) {
         // Worker can take more work
+        // Remove this worker from any previous position
+        const stackIdx = idleWorkerStack.indexOf(worker);
+        if (stackIdx >= 0) idleWorkerStack.splice(stackIdx, 1);
+        // Add only once at the top of the stack
         idleWorkerStack.push(worker);
     } else {
         // Worker hit its limit; remove & replace
