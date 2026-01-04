@@ -232,15 +232,15 @@ function dispatch() {
     if (workers.length < CONCURRENCY) fillWorkers(MESSAGES_LIMIT);
     while (idleWorkerStack.length > 0 && taskQueue.length > 0) {
         const idleWorker = idleWorkerStack.pop()!;
-        if (!Number.isFinite(idleWorker.messagesRemaining) || idleWorker.messagesRemaining <= 0) {
-            retireWorker(idleWorker);
-            scheduleRefillAndDispatch();
+        if (!Number.isFinite(idleWorker.messagesRemaining) || idleWorker.messagesRemaining <= 0 || retireAfterFlight.has(idleWorker)) {
+            idleWorker.messagesRemaining = 0;
+            releaseWorker(idleWorker);
             continue;
         }
         const task = taskQueue.shift()!;
         const enqueuedAt = taskEnqueuedAt.get(task) ?? Date.now();
         if (enqueuedAt < (Date.now() - MAX_TASK_AGE_MS)) {
-            idleWorkerStack.push(idleWorker);
+            releaseWorker(idleWorker);
             try {
                 task.reject(new Error("Task was queued longer than allowed"));
             } catch {
