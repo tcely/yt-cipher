@@ -168,9 +168,9 @@ function releaseWorker(
     worker: WorkerWithLimit,
     messagesLimit: number = MESSAGES_LIMIT,
 ) {
-    // Only release once: if nothing is in-flight, don't re-add/retire twice.
-    const inFlight = clearInFlight(worker);
-    if (!inFlight) return;
+    // Cleanup any tracked in-flight state (if present), but do not short-circuit:
+    // callers may invoke `releaseWorker()` in paths where the task was never successfully tracked.
+    clearInFlight(worker);
 
     // Quarantine marker takes precedence: never return to idle once quarantined.
     if (retireAfterFlight.has(worker)) {
