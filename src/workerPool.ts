@@ -112,7 +112,7 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
             //   so terminate it now to avoid "zombie" workers.
 
             const quarantined: WorkerWithLimit[] = [];
-            const retireImmediately: WorkerWithLimit[] = [];
+            const retireImmediately = new Set<WorkerWithLimit>();
             while (workers.length > 0) {
                 const w = workers.pop()!;
                 w.messagesRemaining = 0;
@@ -123,7 +123,7 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
                 if (inFlightTask.has(w)) {
                     inFlightWorker.add(w);
                 } else {
-                    retireImmediately.push(w);
+                    retireImmediately.add(w);
                 }
             }
             const quarantinedSet = new Set(quarantined);
@@ -132,15 +132,14 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
                 const idleWorker = idleWorkerStack.pop()!;
                 if (!idleWorkerSet.has(idleWorker)) continue; // stale entry
                 clearIdle(idleWorker); // now reserved (not idle)
-                retireImmediately.push(idleWorker);
+                retireImmediately.add(idleWorker);
             }
             // Defensive: after quarantine/recovery, discard any lingering idle markers
             // to avoid stale bookkeeping blocking future scheduling.
             idleWorkerSet.clear();
 
             // Terminate quarantined workers that are not actually in-flight.
-            while (retireImmediately.length > 0) {
-                const w = retireImmediately.pop()!;
+            for (const w of retireImmediately) {
                 retireWorker(w);
             }
 
