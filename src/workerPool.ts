@@ -187,7 +187,10 @@ function scheduleRefillAndDispatch() {
     });
 }
 
-function releaseWorker(worker: WorkerWithLimit) {
+function releaseWorker(
+    worker: WorkerWithLimit,
+    overrideSchedule: boolean = false,
+) {
     let schedule = (workers.length < CONCURRENCY);
 
     // Quarantine marker takes precedence: never return to idle once quarantined.
@@ -204,6 +207,7 @@ function releaseWorker(worker: WorkerWithLimit) {
         schedule = true;
     }
 
+    if (overrideSchedule) return;
     // Keep the pool healthy and keep draining the queue
     if (schedule || taskQueue.length > 0)
         scheduleRefillAndDispatch();
@@ -347,12 +351,14 @@ function takeIdleWorker(): WorkerWithLimit | undefined {
         if (!idleWorkerSet.has(w)) continue; // stale entry
         if (!Number.isFinite(w.messagesRemaining) || w.messagesRemaining <= 0 || retireAfterFlight.has(w)) {
             w.messagesRemaining = 0;
-            releaseWorker(w);
+            releaseWorker(w, true); // do not schedule
             continue;
         }
         clearIdle(w); // now reserved (not idle)
         return w;
     }
+    if (workers.length < CONCURRENCY)
+        scheduleRefillAndDispatch();
     return undefined;
 }
 
