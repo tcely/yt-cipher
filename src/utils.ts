@@ -77,7 +77,9 @@ export function safeCall(fn: unknown, ...args: unknown[]): unknown {
     const label = options?.label ?? "safeCall";
 
     try {
-        const receiver = (this ?? globalThis);
+        // Preserve the caller-provided receiver exactly.
+        // In module/strict mode, `this` is typically `undefined` for plain calls.
+        const receiver = this as unknown;
         return Reflect.apply(fn, receiver, args);
     } catch (err) {
         try {

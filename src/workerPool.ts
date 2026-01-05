@@ -55,7 +55,6 @@ function retireWorker(worker: WorkerWithLimit) {
             log: true,
         });
     }
-    inFlightWorker.delete(worker);
 
     removeWorkerFromTracking(worker);
     safeCall(worker.terminate.bind(worker), {
@@ -130,9 +129,14 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
             const quarantinedSet = new Set(quarantined);
 
             while (idleWorkerStack.length > 0) {
-                const idle = idleWorkerStack.pop()!;
-                retireImmediately.push(idle);
+                const idleWorker = idleWorkerStack.pop()!;
+                if (!idleWorkerSet.has(idleWorker)) continue; // stale entry
+                clearIdle(idleWorker); // now reserved (not idle)
+                retireImmediately.push(idleWorker);
             }
+            // Defensive: after quarantine/recovery, discard any lingering idle markers
+            // to avoid stale bookkeeping blocking future scheduling.
+            idleWorkerSet.clear();
 
             // Terminate quarantined workers that are not actually in-flight.
             while (retireImmediately.length > 0) {
@@ -186,6 +190,8 @@ function releaseWorker(
 
     // Quarantine marker takes precedence: never return to idle once quarantined.
     if (retireAfterFlight.has(worker)) {
+        // This was likely already zero, but set it anyway
+        worker.messagesRemaining = 0;
         retireWorker(worker);
     } else if (worker.messagesRemaining > 0) {
         // Worker can take more work
@@ -234,15 +240,15 @@ function clearIdle(worker: WorkerWithLimit): boolean {
 
 function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
     const inFlight = inFlightTask.get(worker);
-    if (inFlight) {
-        try {
+    try {
+        if (inFlight) {
             worker.removeEventListener("message", inFlight.messageHandler);
             const timeoutId = (inFlight as InFlightWithTimeout).timeoutId;
             if (typeof timeoutId === "number") clearTimeout(timeoutId);
-        } finally {
-            inFlightTask.delete(worker);
-            inFlightWorker.delete(worker);
         }
+    } finally {
+        inFlightTask.delete(worker);
+        inFlightWorker.delete(worker);
     }
     return inFlight;
 }
