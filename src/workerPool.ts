@@ -242,9 +242,9 @@ function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
     const inFlight = inFlightTask.get(worker);
     try {
         if (inFlight) {
-            worker.removeEventListener("message", inFlight.messageHandler);
             const timeoutId = (inFlight as InFlightWithTimeout).timeoutId;
             if (typeof timeoutId === "number") clearTimeout(timeoutId);
+            worker.removeEventListener("message", inFlight.messageHandler);
         }
     } finally {
         inFlightTask.delete(worker);
