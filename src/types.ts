@@ -46,9 +46,7 @@ export interface Task {
     reject: (error: any) => void;
 }
 
-export type InFlight = { task: Task; messageHandler: (e: MessageEvent) => void };
-
-export type InFlightWithTimeout = InFlight & { timeoutId: number };
+export type InFlight = { task: Task; timeoutId: number };
 
 export type SafeCallOptions = {
     /**
