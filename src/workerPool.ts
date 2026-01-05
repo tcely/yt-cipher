@@ -265,7 +265,7 @@ function takeIdleWorker(): WorkerWithLimit | undefined {
 function dispatch() {
     let idleWorker: ReturnType<typeof takeIdleWorker>;
     if (workers.length < CONCURRENCY) fillWorkers(MESSAGES_LIMIT);
-    while (undefined !== (idleWorker = takeIdleWorker()) && taskQueue.length > 0) {
+    while (taskQueue.length > 0 && undefined !== (idleWorker = takeIdleWorker())) {
         const worker = idleWorker; // capture for closure
         const task = taskQueue.shift()!;
         const enqueuedAt = taskEnqueuedAt.get(task) ?? Date.now();
