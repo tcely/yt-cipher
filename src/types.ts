@@ -46,6 +46,15 @@ export interface Task {
     reject: (error: any) => void;
 }
 
+export interface TaskQueue<T> {
+    /** Match Array#push(...) usage */
+    push(item: T): number;
+    /** Match Array#shift() usage */
+    shift(): T | undefined;
+    /** Match Array#length usage */
+    readonly length: number;
+}
+
 export type InFlight = { task: Task; timeoutId: number };
 
 export type SafeCallOptions = {

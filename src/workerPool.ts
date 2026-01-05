@@ -1,4 +1,5 @@
 import type { InFlight, Task, WorkerWithLimit } from "./types.ts";
+import { createTaskQueue } from "./taskQueueDeque.ts";
 import { safeCall } from "./utils.ts";
 
 const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator.hardwareConcurrency || 1;
@@ -13,7 +14,7 @@ const MESSAGES_LIMIT = Number.isFinite(parsedMessagesLimit) && parsedMessagesLim
 const workers: WorkerWithLimit[] = [];
 const idleWorkerSet = new Set<WorkerWithLimit>();
 const idleWorkerStack: WorkerWithLimit[] = [];
-const taskQueue: Task[] = [];
+const taskQueue = createTaskQueue<Task>();
 // Track enqueue timestamps without extending `Task`'s type surface.
 const taskEnqueuedAt = new WeakMap<Task, number>();
 const inFlightTask = new WeakMap<WorkerWithLimit, InFlight>();
@@ -159,6 +160,8 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
                 }
             }
 
+            /**
+             * TODO: Enable this after decisions are made or remove it.
             // If we've exceeded our bounded recovery threshold, latch the pool failure and drain queued tasks.
             if (recoveryFailures >= RECOVERY_FAILURE_THRESHOLD) {
                 poolInitError ??= new Error(
@@ -167,6 +170,7 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
                 drainAndRejectQueuedTasks(poolInitError);
                 return;
             }
+            */
 
             // Exponential backoff with cap (no immediate recursive microtasks).
             const delay = Math.min(recoveryBackoffMs, RECOVERY_BACKOFF_MAX_MS);
@@ -184,8 +188,7 @@ function releaseWorker(
     worker: WorkerWithLimit,
     messagesLimit: number = MESSAGES_LIMIT,
 ) {
-    const inFlight = clearInFlight(worker);
-    // const hadInFlight = Boolean(inFlight);
+    let schedule = (workers.length < CONCURRENCY);
 
     // Quarantine marker takes precedence: never return to idle once quarantined.
     if (retireAfterFlight.has(worker)) {
@@ -198,10 +201,12 @@ function releaseWorker(
     } else {
         // Worker hit its limit; remove & replace
         retireWorker(worker);
+        schedule = true;
     }
 
     // Keep the pool healthy and keep draining the queue
-    scheduleRefillAndDispatch(messagesLimit);
+    if (schedule || taskQueue.length > 0)
+        scheduleRefillAndDispatch(messagesLimit);
 }
 
 function setIdle(worker: WorkerWithLimit) {
@@ -355,13 +360,13 @@ function takeIdleWorker(): WorkerWithLimit | undefined {
 }
 
 function dispatch() {
+    const now = Date.now();
     let idleWorker: ReturnType<typeof takeIdleWorker>;
-    if (workers.length < CONCURRENCY) fillWorkers(MESSAGES_LIMIT);
     while (taskQueue.length > 0 && undefined !== (idleWorker = takeIdleWorker())) {
         const worker = idleWorker; // capture for closure
         const task = taskQueue.shift()!;
-        const enqueuedAt = taskEnqueuedAt.get(task) ?? Date.now();
-        if (enqueuedAt < (Date.now() - MAX_TASK_AGE_MS)) {
+        const enqueuedAt = taskEnqueuedAt.get(task) ?? now;
+        if (enqueuedAt < (now - MAX_TASK_AGE_MS)) {
             try {
                 safeCall(task.reject, new Error("Task was queued longer than allowed"), { label: "task.reject(maxAge)", log: true });
             } finally {
@@ -369,36 +374,6 @@ function dispatch() {
             }
             continue;
         }
-
-        const messageHandler = (e: MessageEvent) => {
-            const { type, data } = (e.data ?? {}) as { type?: string; data?: any };
-            try {
-                const inFlight = clearInFlight(worker);
-
-                if (type === "success") {
-                    if (typeof data === "string") {
-                        safeCall(task.resolve, data, { label: "task.resolve", log: true });
-                    } else {
-                        worker.messagesRemaining = 0;
-                        safeCall(task.reject, new Error("Worker returned non-string success payload"), {
-                            label: "task.reject(nonStringSuccess)",
-                            log: true,
-                        });
-                    }
-                } else {
-                    // Treat worker-reported errors as potentially unhealthy.
-                    worker.messagesRemaining = 0;
-
-                    console.error("Received error from worker:", data);
-                    const err = new Error(data?.message ?? "Worker error");
-                    err.stack = data?.stack;
-
-                    safeCall(task.reject, err, { label: "task.reject(workerError)", log: true });
-                }
-            } finally {
-                releaseWorker(worker);
-            }
-        };
 
         try {
             worker.messagesRemaining -= 1;

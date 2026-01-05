@@ -58,6 +58,16 @@ Max size (or entry limit) for the STS cache (used by [`src/stsCache.ts`](./stsCa
 - Type: integer
 - Default: implementation-defined if unset (see [`src/stsCache.ts`](./stsCache.ts))
 
+### `TASK_QUEUE_DEQUE_IMPL`
+Selects which deque implementation backs the internal task queue (used by the worker pool).
+
+- Type: string
+- Default: `alg`
+- Allowed: `alg`, `korkje`
+- Behavior:
+  - `alg`: uses `jsr:@alg/deque`
+  - `korkje`: uses `jsr:@korkje/deque`
+
 ### `MAX_THREADS`
 Controls the maximum number of workers used by the pool (used by [`src/workerPool.ts`](./workerPool.ts))
 
