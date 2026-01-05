@@ -65,7 +65,7 @@ function retireWorker(worker: WorkerWithLimit) {
     retireAfterFlight.delete(worker);
 }
 
-function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
+function scheduleRefillAndDispatch() {
     // If we've latched a fatal failure, fail fast and drain anything still queued.
     if (poolInitError) {
         drainAndRejectQueuedTasks(poolInitError);
@@ -83,7 +83,7 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
         if (recoveryTimerId !== null) return;
 
         try {
-            fillWorkers(messagesLimit);
+            fillWorkers();
             // Opportunistically compact the stack.
             // Extra pops for stale entries may eventually slow down dispatch.
             if (idleWorkerStack.length > (16 + idleWorkerSet.size * 2)) {
@@ -152,7 +152,10 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
                 try {
                     const inFlight = clearInFlight(w);
                     if (inFlight) {
-                        safeCall(inFlight.task.reject, e, { label: "inFlight.task.reject(recovery)", log: true });
+                        safeCall(inFlight.task.reject, new Error("Worker was unexpectedly found in-flight"), {
+                            label: "inFlight.task.reject(recovery)",
+                            log: true
+                        });
                     }
                 } finally {
                     retireWorker(w);
@@ -178,16 +181,13 @@ function scheduleRefillAndDispatch(messagesLimit: number = MESSAGES_LIMIT) {
 
             recoveryTimerId = setTimeout(() => {
                 recoveryTimerId = null;
-                scheduleRefillAndDispatch(messagesLimit);
+                scheduleRefillAndDispatch();
             }, delay) as unknown as number;
         }
     });
 }
 
-function releaseWorker(
-    worker: WorkerWithLimit,
-    messagesLimit: number = MESSAGES_LIMIT,
-) {
+function releaseWorker(worker: WorkerWithLimit) {
     let schedule = (workers.length < CONCURRENCY);
 
     // Quarantine marker takes precedence: never return to idle once quarantined.
@@ -206,7 +206,7 @@ function releaseWorker(
 
     // Keep the pool healthy and keep draining the queue
     if (schedule || taskQueue.length > 0)
-        scheduleRefillAndDispatch(messagesLimit);
+        scheduleRefillAndDispatch();
 }
 
 function setIdle(worker: WorkerWithLimit) {
@@ -256,10 +256,7 @@ function clearInFlight(worker: WorkerWithLimit): InFlight | undefined {
 }
 
 const workerMessageHandlerAttached = new WeakSet<WorkerWithLimit>();
-function attachPermanentHandlers(
-    worker: WorkerWithLimit,
-    messagesLimit: number = MESSAGES_LIMIT,
-) {
+function attachPermanentHandlers(worker: WorkerWithLimit) {
     if (workerMessageHandlerAttached.has(worker)) return;
     workerMessageHandlerAttached.add(worker);
 
@@ -274,7 +271,7 @@ function attachPermanentHandlers(
             console.error("Worker sent message but no in-flight task was tracked; retiring worker.");
             worker.messagesRemaining = 0;
             retireWorker(worker);
-            scheduleRefillAndDispatch(messagesLimit);
+            scheduleRefillAndDispatch();
             return;
         }
 
@@ -305,7 +302,7 @@ function attachPermanentHandlers(
                 safeCall(task.reject, err, { label: "task.reject(workerError)", log: true });
             }
         } finally {
-            releaseWorker(worker, messagesLimit);
+            releaseWorker(worker);
         }
     });
 
@@ -322,7 +319,7 @@ function attachPermanentHandlers(
             }
         } finally {
             retireWorker(worker);
-            scheduleRefillAndDispatch(messagesLimit);
+            scheduleRefillAndDispatch();
         }
     });
 
@@ -339,7 +336,7 @@ function attachPermanentHandlers(
             }
         } finally {
             retireWorker(worker);
-            scheduleRefillAndDispatch(messagesLimit);
+            scheduleRefillAndDispatch();
         }
     });
 }
@@ -428,9 +425,10 @@ function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
         let worker: WorkerWithLimit;
         worker = new Worker(new URL("../worker.ts", import.meta.url).href, { type: "module" }) as WorkerWithLimit;
 
+        worker.messagesLimit = messagesLimit;
         worker.messagesRemaining = messagesLimit;
 
-        attachPermanentHandlers(worker, messagesLimit);
+        attachPermanentHandlers(worker);
 
         workers.push(worker);
         setIdle(worker);
