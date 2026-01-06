@@ -367,7 +367,7 @@ function createWorker(): WorkerWithLimit {
         throw e;
     }
 
-    worker.messagesRemaining = worker.messagesLimit;
+    worker.messagesRemaining = MESSAGES_LIMIT;
 
     attachPermanentHandlers(worker);
 
