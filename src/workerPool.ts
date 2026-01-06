@@ -7,7 +7,7 @@ const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator
 // Keep the per-worker message budget consistent across the module.
 // (Optional env override for testing/tuning.)
 const parsedMessagesLimit = parseInt(Deno.env.get("MESSAGES_LIMIT") || "", 10);
-const MESSAGES_LIMIT = Number.isFinite(parsedMessagesLimit) && parsedMessagesLimit > 0
+const MESSAGES_LIMIT = Number.isFinite(parsedMessagesLimit) && parsedMessagesLimit > 10
     ? parsedMessagesLimit
     : 10_000;
 
@@ -350,7 +350,7 @@ function createWorker(messagesLimit: number = MESSAGES_LIMIT): WorkerWithLimit {
     const worker = new Worker(url.href, { type: "module" }) as WorkerWithLimit;
 
     // Set and lock the limit
-    const normalizedMessagesLimit = Number.isFinite(messagesLimit) && messagesLimit > 0
+    const normalizedMessagesLimit = Number.isFinite(messagesLimit) && messagesLimit > 10
         ? Math.floor(messagesLimit)
         : MESSAGES_LIMIT;
 
