@@ -355,7 +355,6 @@ function createWorker(): WorkerWithLimit {
     }
 
     try {
-        worker.messagesRemaining = MESSAGES_LIMIT;
         // Set and lock the limit
         Object.defineProperty(worker, "messagesLimit", {
             value: MESSAGES_LIMIT,
@@ -363,6 +362,15 @@ function createWorker(): WorkerWithLimit {
             writable: false,
             enumerable: true,
         });
+
+        // Mutable, but not removable/re-definable pool metadata.
+        Object.defineProperty(worker, "messagesRemaining", {
+            value: MESSAGES_LIMIT,
+            configurable: false,
+            writable: true,
+            enumerable: true,
+        });
+
         // handlers are available for use immediately
         attachPermanentHandlers(worker);
     } catch (e) {
