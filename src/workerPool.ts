@@ -350,10 +350,15 @@ function createWorker(messagesLimit: number = MESSAGES_LIMIT): WorkerWithLimit {
     const worker = new Worker(url.href, { type: "module" }) as WorkerWithLimit;
 
     // Set and lock the limit
+    const normalizedMessagesLimit = Number.isFinite(messagesLimit) && messagesLimit > 0
+        ? Math.floor(messagesLimit)
+        : MESSAGES_LIMIT;
+
     Object.defineProperty(worker, "messagesLimit", {
-        value: messagesLimit,
+        value: normalizedMessagesLimit,
         configurable: false,
         writable: false,
+        enumerable: true,
     });
 
     worker.messagesRemaining = messagesLimit;
