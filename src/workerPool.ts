@@ -381,8 +381,7 @@ function createWorker(): WorkerWithLimit {
                 label: "worker.terminate(createWorker)",
                 log: true,
         });
-        const err = e instanceof Error ? e : new Error(String(e));
-        throw err;
+        throw normalizeError(e);
     }
 
     return worker;
