@@ -355,7 +355,7 @@ function createWorker(): WorkerWithLimit {
     }
 
     try {
-        worker.messagesRemaining = 0;
+        worker.messagesRemaining = MESSAGES_LIMIT;
         // Set and lock the limit
         Object.defineProperty(worker, "messagesLimit", {
             value: MESSAGES_LIMIT,
@@ -363,8 +363,8 @@ function createWorker(): WorkerWithLimit {
             writable: false,
             enumerable: true,
         });
+        // handlers are available for use immediately
         attachPermanentHandlers(worker);
-        worker.messagesRemaining = MESSAGES_LIMIT;
     } catch (e) {
         worker.terminate();
         throw e;
