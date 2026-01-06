@@ -345,6 +345,25 @@ function attachPermanentHandlers(worker: WorkerWithLimit) {
     });
 }
 
+function createWorker(messagesLimit: number = MESSAGES_LIMIT): WorkerWithLimit {
+    const url = new URL("../worker.ts", import.meta.url);
+    const worker = new Worker(url.href, { type: "module" }) as WorkerWithLimit;
+
+    // Set and lock the limit
+    worker.messagesLimit = messagesLimit;
+    Object.defineProperty(
+        worker,
+        "messagesLimit",
+        { configurable: false, writable: false },
+    );
+
+    worker.messagesRemaining = messagesLimit;
+
+    attachPermanentHandlers(worker);
+
+    return worker;
+}
+
 function takeIdleWorker(): WorkerWithLimit | undefined {
     while (idleWorkerStack.length > 0) {
         const w = idleWorkerStack.pop()!;
@@ -426,15 +445,9 @@ export function execInPool(data: string): Promise<string> {
     });
 }
 
-function fillWorkers(messagesLimit: number = MESSAGES_LIMIT) {
+function fillWorkers() {
     while (workers.length < CONCURRENCY) {
-        let worker: WorkerWithLimit;
-        worker = new Worker(new URL("../worker.ts", import.meta.url).href, { type: "module" }) as WorkerWithLimit;
-
-        worker.messagesLimit = messagesLimit;
-        worker.messagesRemaining = messagesLimit;
-
-        attachPermanentHandlers(worker);
+        const worker = createWorker();
 
         workers.push(worker);
         setIdle(worker);
