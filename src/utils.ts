@@ -114,7 +114,13 @@ export function normalizeError(err: unknown, message?: string): Error {
         if (typeof err === "string") {
             derived = err;
         } else if (err && typeof err === "object") {
-            const maybeMessage = (err as { message?: unknown }).message;
+    let derived: string;
+    if (message !== undefined) {
+        derived = message;
+    } else if (typeof err === "string") {
+        derived = err;
+    } else if (err && typeof err === "object") {
+        const maybeMessage = (err as { message?: unknown }).message;
             if (typeof maybeMessage === "string" && maybeMessage.length > 0) {
                 derived = maybeMessage;
             } else {
@@ -124,9 +130,8 @@ export function normalizeError(err: unknown, message?: string): Error {
                     derived = String(err);
                 }
             }
-        } else {
-            derived = String(err);
-        }
+    } else {
+        derived = String(err);
     }
 
     // Preserve the original thrown value for debugging.
