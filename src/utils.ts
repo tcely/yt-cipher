@@ -109,6 +109,21 @@ export function normalizeError(err: unknown, message?: string): Error {
         return message ? new Error(message, { cause: err }) : err;
     }
 
+    let derived = message;
+    if (!derived) {
+        if (typeof err === "string") {
+            derived = err;
+        } else if (err && typeof err === "object") {
+            try {
+                derived = JSON.stringify(err);
+            } catch {
+                derived = String(err);
+            }
+        } else {
+            derived = String(err);
+        }
+    }
+
     // Preserve the original thrown value for debugging.
-    return new Error(message ?? String(err), { cause: err });
+    return new Error(derived, { cause: err });
 }
