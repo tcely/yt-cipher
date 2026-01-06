@@ -349,13 +349,23 @@ function createWorker(): WorkerWithLimit {
     const url = new URL("../worker.ts", import.meta.url);
     const worker = new Worker(url.href, { type: "module" }) as WorkerWithLimit;
 
+    if (!Object.isExtensible(worker)) {
+        worker.terminate();
+        throw new Error("Worker instance is not extensible; cannot attach pool metadata");
+    }
+
     // Set and lock the limit
-    Object.defineProperty(worker, "messagesLimit", {
-        value: MESSAGES_LIMIT,
-        configurable: false,
-        writable: false,
-        enumerable: true,
-    });
+    try {
+        Object.defineProperty(worker, "messagesLimit", {
+            value: MESSAGES_LIMIT,
+            configurable: false,
+            writable: false,
+            enumerable: true,
+        });
+    } catch (e) {
+        worker.terminate();
+        throw e;
+    }
 
     worker.messagesRemaining = worker.messagesLimit;
 
