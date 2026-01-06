@@ -354,22 +354,21 @@ function createWorker(): WorkerWithLimit {
         throw new Error("Worker instance is not extensible; cannot attach pool metadata");
     }
 
-    // Set and lock the limit
     try {
+        worker.messagesRemaining = 0;
+        // Set and lock the limit
         Object.defineProperty(worker, "messagesLimit", {
             value: MESSAGES_LIMIT,
             configurable: false,
             writable: false,
             enumerable: true,
         });
+        attachPermanentHandlers(worker);
+        worker.messagesRemaining = MESSAGES_LIMIT;
     } catch (e) {
         worker.terminate();
         throw e;
     }
-
-    worker.messagesRemaining = MESSAGES_LIMIT;
-
-    attachPermanentHandlers(worker);
 
     return worker;
 }
