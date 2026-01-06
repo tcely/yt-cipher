@@ -104,8 +104,10 @@ export function safeCall(fn: unknown, ...args: unknown[]): unknown {
     }
 }
 
-export function normalizeError(err: unknown, message = undefined): Error {
-    if (err instanceof Error) return err;
+export function normalizeError(err: unknown, message?: string): Error {
+    if (err instanceof Error) {
+        return message ? new Error(message, { cause: err }) : err;
+    }
 
     // Preserve the original thrown value for debugging.
     return new Error(message ?? String(err), { cause: err });
