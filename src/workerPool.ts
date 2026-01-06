@@ -350,7 +350,10 @@ function createWorker(): WorkerWithLimit {
     const worker = new Worker(url.href, { type: "module" }) as WorkerWithLimit;
 
     if (!Object.isExtensible(worker)) {
-        worker.terminate();
+        safeCall(worker.terminate.bind(worker), {
+                label: "worker.terminate(createWorker)",
+                log: true,
+        });
         throw new Error("Worker instance is not extensible; cannot attach pool metadata");
     }
 
@@ -374,7 +377,10 @@ function createWorker(): WorkerWithLimit {
         // handlers are available for use immediately
         attachPermanentHandlers(worker);
     } catch (e) {
-        worker.terminate();
+        safeCall(worker.terminate.bind(worker), {
+                label: "worker.terminate(createWorker)",
+                log: true,
+        });
         throw e;
     }
 
