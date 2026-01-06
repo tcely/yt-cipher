@@ -361,7 +361,7 @@ function createWorker(messagesLimit: number = MESSAGES_LIMIT): WorkerWithLimit {
         enumerable: true,
     });
 
-    worker.messagesRemaining = messagesLimit;
+    worker.messagesRemaining = worker.messagesLimit;
 
     attachPermanentHandlers(worker);
 
