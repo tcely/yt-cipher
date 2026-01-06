@@ -114,10 +114,15 @@ export function normalizeError(err: unknown, message?: string): Error {
         if (typeof err === "string") {
             derived = err;
         } else if (err && typeof err === "object") {
-            try {
-                derived = JSON.stringify(err);
-            } catch {
-                derived = String(err);
+            const maybeMessage = (err as { message?: unknown }).message;
+            if (typeof maybeMessage === "string" && maybeMessage.length > 0) {
+                derived = maybeMessage;
+            } else {
+                try {
+                    derived = JSON.stringify(err);
+                } catch {
+                    derived = String(err);
+                }
             }
         } else {
             derived = String(err);
