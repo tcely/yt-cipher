@@ -1,6 +1,6 @@
 import type { InFlight, Task, WorkerWithLimit } from "./types.ts";
 import { createTaskQueue } from "./taskQueueDeque.ts";
-import { safeCall } from "./utils.ts";
+import { normalizeError, safeCall } from "./utils.ts";
 
 const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator.hardwareConcurrency || 1;
 
