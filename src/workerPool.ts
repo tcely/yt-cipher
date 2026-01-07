@@ -1,8 +1,9 @@
 import type { InFlight, Task, WorkerWithLimit } from "./types.ts";
 import { createTaskQueue } from "./taskQueueDeque.ts";
-import { normalizeError, safeCall } from "./utils.ts";
+import { getTimestamp, normalizeError, safeCall } from "./utils.ts";
 
-const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) || navigator.hardwareConcurrency || 1;
+const CONCURRENCY = parseInt(Deno.env.get("MAX_THREADS") || "", 10) ||
+    navigator.hardwareConcurrency || 1;
 
 // Keep the per-worker message budget consistent across the module.
 // (Optional env override for testing/tuning.)
@@ -479,6 +480,6 @@ function fillWorkers() {
 
 export function initializeWorkers() {
     fillWorkers();
-    console.log(`Initialized ${CONCURRENCY} workers`);
+    console.log(`[${getTimestamp()}] Initialized ${CONCURRENCY} workers`);
 }
 
