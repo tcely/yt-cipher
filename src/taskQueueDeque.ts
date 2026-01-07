@@ -18,34 +18,45 @@ export function createTaskQueue<T>(): TaskQueue<T> {
         : new AlgTaskQueueAdapter<T>();
 }
 
-class AlgTaskQueueAdapter<T> extends AlgDeque implements TaskQueue<T> {
+class AlgTaskQueueAdapter<T> implements TaskQueue<T> {
     // implements blocks of arrays
+    private readonly dq = new AlgDeque<T>();
 
     public push(item: T): number {
-        // Match Array#push: commonly returns new length; the underlying deque doesn’t, so return length ourselves.
-        this.pushBack(item);
+        // Match Array#push: commonly returns new length; if underlying deque doesn’t, return length ourselves.
+        this.dq.pushBack(item);
         return this.length;
     }
 
     public shift(): T | undefined {
-        // Match Array#shift: by returning undefined when empty.
-
-        /**
-         * Avoid the expensive exception by checking the condition first.
-         *
-         * popFront() {
-         *     if (this.#size === 0) {
-         *         throw new Error("Called `.popFront` on empty queue");
-         *     }
-         */
-        if (0 === this.length) {
+        // Match Array#shift
+        let value: T;
+        try {
+            value = this.dq.popFront();
+        } catch {
             return undefined;
         }
+        return value;
+    }
 
-        return this.popFront();
+    public get length(): number {
+        return this.dq.length;
     }
 }
 
-class KorkjeTaskQueueAdapter<T> extends KorkjeDeque implements TaskQueue<T> {
+class KorkjeTaskQueueAdapter<T> implements TaskQueue<T> {
     // manages an underlying array with a ring buffer
+    private readonly dq = new KorkjeDeque<T>();
+
+    public push(item: T): number {
+        return this.dq.push(item);
+    }
+
+    public shift(): T | undefined {
+        return this.dq.shift();
+    }
+
+    public get length(): number {
+        return this.dq.length;
+    }
 }
