@@ -46,6 +46,13 @@ abstract class AbstractTaskQueue<T> implements TaskQueue<T> {
     public abstract shift(): T | undefined;
     public abstract unshift(...items: T[]): number;
 
+    /**
+     * Important for head-indexed arrays:
+     * Do NOT rely on AbstractTaskQueue.clear.
+     * This default implementation will not clear items
+     * before the head index.
+     *
+     */
     public clear(): void {
         // O(n) pop() calls;
         //   this relies on pop() being O(1) to keep total O(n).
@@ -66,36 +73,79 @@ abstract class AbstractTaskQueue<T> implements TaskQueue<T> {
  */
 class ArrayTaskQueue<T> extends AbstractTaskQueue<T> implements TaskQueue<T> {
     private readonly items: T[] = [];
+    private head = 0;
 
     // Match Array#length usage
     public get length(): number {
-        return this.items.length;
+        return this.items.length - this.head;
     }
 
     // Match Array#push(...items) usage
     public push(...items: T[]): number {
-        return this.items.push(...items);
+        this.items.push(...items);
+        return this.length;
     }
 
     // Match Array#pop() usage
     public pop(): T | undefined {
-        return this.items.pop();
+        if (this.empty) return undefined;
+
+        const v = this.items.pop();
+        // If the queue is now logically empty, reset to release any already-shifted slots.
+        if (this.empty) this.clear();
+        return v;
     }
 
     // Match Array#shift() usage
     public shift(): T | undefined {
-        return this.items.shift();
+        if (this.empty) return undefined;
+
+        const v = this.items[this.head++];
+        // If the queue is now logically empty, reset to release any already-shifted slots.
+        if (this.empty) this.clear();
+        // Periodically compact to avoid unbounded growth
+        if (this.head > 1024 && this.head * 2 > this.items.length) {
+            this.items.splice(0, this.head);
+            this.head = 0;
+        }
+        return v;
     }
 
     // Match Array#unshift(...items) usage
     public unshift(...items: T[]): number {
-        return this.items.unshift(...items);
+        const k = items.length;
+        if (0 === k) return this.length;
+
+        // Fast-path: there is enough unused space before `head`
+        // so we can place items into [head-k, head) and move head back.
+        if (this.head >= k) {
+            const start = this.head - k;
+            // Intentionally avoided:
+            //     this.items.splice(start, k, ...items);
+            // The tight loop was considered less problematic over all.
+            for (let i = 0; i < k; i++) {
+                this.items[start + i] = items[i];
+            }
+            this.head = start;
+            return this.length;
+        }
+
+        // Not enough head-gap: compact then use native unshift.
+        // Compact only if we actually have skipped space.
+        if (this.head > 0) {
+            this.items.splice(0, this.head);
+            this.head = 0;
+        }
+
+        this.items.unshift(...items);
+        return this.length;
     }
 
     // Match "clear the queue" semantics
     public clear(): void {
         // O(1) clear for arrays.
         this.items.length = 0;
+        this.head = 0;
     }
 }
 
