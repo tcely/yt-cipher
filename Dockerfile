@@ -22,7 +22,7 @@ RUN deno compile \
     --include worker.ts \
     server.ts
 
-FROM ghcr.io/tcely/docker-tini:main@sha256:0b16fede939249d3783966eba573bac03cf106721df5a63e3555f6b8b0cef074 AS tini-bin
+FROM ghcr.io/tcely/docker-tini:main@sha256:d57e136fc426e768461935e497702f8ca8b18d6751564f8a81877538e0554080 AS tini-bin
 FROM scratch AS tini
 ARG TARGETARCH TINI_VERSION="0.19.0"
 COPY --from=tini-bin "/releases/v${TINI_VERSION}/tini-static-${TARGETARCH}" /tini
