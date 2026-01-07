@@ -6,7 +6,7 @@ import { Deque as KorkjeDeque } from "jsr:@korkje/deque";
 type DequeImpl = "alg" | "korkje" | "native";
 
 function getDequeImpl(): DequeImpl {
-    const v = (Deno.env.get("TASK_QUEUE_DEQUE_IMPL") || "").toLowerCase();
+    const v = (Deno.env.get("TASK_QUEUE_DEQUE_IMPL") || "").trim().toLowerCase();
     if (v === "native") return "native";
     if (v === "korkje") return "korkje";
     return "alg";
