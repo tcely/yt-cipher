@@ -3,6 +3,7 @@
     "lib": [ "deno.worker" ]
   },
   "fmt": {
+    "ignore": ["**/*.md"],
     "include": ["src/", "*.ts"],
     "indentWidth": 4
   },
