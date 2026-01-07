@@ -142,7 +142,7 @@ class ArrayTaskQueue<T> extends AbstractTaskQueue<T> implements TaskQueue<T> {
     }
 
     // Match "clear the queue" semantics
-    public clear(): void {
+    public override clear(): void {
         // O(1) clear for arrays.
         this.items.length = 0;
         this.head = 0;
@@ -216,7 +216,7 @@ class AlgTaskQueueAdapter<T> extends AbstractTaskQueue<T> implements TaskQueue<T
         return this.length;
     }
 
-    public clear(): void {
+    public override clear(): void {
         // O(1) clear by replacing the underlying deque instance.
         this.dq = new AlgDeque<T>();
     }
@@ -241,7 +241,7 @@ class KorkjeTaskQueueAdapter<T> extends AbstractTaskQueue<T> implements TaskQueu
         return this.dq.length;
     }
 
-    public get empty(): boolean {
+    public override get empty(): boolean {
         return this.dq.isEmpty();
     }
 
@@ -280,7 +280,7 @@ class KorkjeTaskQueueAdapter<T> extends AbstractTaskQueue<T> implements TaskQueu
         return this.length;
     }
 
-    public clear(): void {
+    public override clear(): void {
         this.dq.clear();
     }
 }
